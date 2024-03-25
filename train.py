@@ -39,7 +39,7 @@ if __name__ == '__main__':
     # 网络结构参数
     parser.add_argument('--backbone_type', type=str, default="resnet50",
                         help='选择主干网络')
-    parser.add_argument('--num_classes', type=int, default=8,
+    parser.add_argument('--num_classes', type=int, default=7,
                         help='目标类别数，对应网络的输出特征通道数')
     parser.add_argument('--pretrain_backbone', type=bool, default=False,
                         help='主干网络是否加载预训练权重')
@@ -47,32 +47,30 @@ if __name__ == '__main__':
                         help='pre-training model load path.')
 
     # 加载数据相关参数
-    parser.add_argument('--dataset_path', type=str, default="data/voc_diabetic",
+    parser.add_argument('--dataset_path', type=str, default="data/dev_diabetes",
                         help='数据集路径')
-    parser.add_argument('--train_txt_path', type=str, default="data/voc_diabetic/ImageSets/Segmentation",
+    parser.add_argument('--train_txt_path', type=str, default="data/dev_diabetes/ImageSets/Segmentation",
                         help='train/val 划分的 txt 文件路径')
     parser.add_argument('--mode', type=bool, default=True,
                         help='当前网络的训练模式：train/val')
 
     # 训练参数
-    parser.add_argument('--epoch', type=int, default=80,
+    parser.add_argument('--epoch', type=int, default=10,
                         help='number of epochs for training')
-    parser.add_argument('--batch_size', default=4,
+    parser.add_argument('--batch_size', default=8,
                         help='batch size when training.')
     parser.add_argument('--num_workers', default=8,
                         help='load data num_workers when training.')
     parser.add_argument('--lr', default=0.0005, type=float,
-                        help='initial learning rate, 0.0005 is the default value for training')
-    parser.add_argument('--lr_steps', default=[40, 70], type=list,
-                        help='decrease lr every step-size epochs for MultiStepLR')
+                        help='初始学习率，0.0005 是训练的默认值')
+    parser.add_argument('--lr_steps', default=[5, 9], type=list,
+                        help='到第5个epoch和第9个epoch降低学习率')
     parser.add_argument('--lr_gamma', default=0.2, type=float,
                         help='decrease lr by a factor of lr_gamma')
-
     parser.add_argument('--weight_decay', default=1e-4, type=float,
                         help='weight decay (default: 1e-4)')
 
     args = parser.parse_args()
-
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
     # 实例化模型
@@ -165,8 +163,8 @@ if __name__ == '__main__':
                         loss.backward()
                         optimizer.step()
                     else:
+                        # TODO val 阶段评估模型的预测结果
                         pass
-                    # TODO 评估
 
                 # statistics loss
                 running_loss += loss.item()
@@ -178,6 +176,7 @@ if __name__ == '__main__':
                 exp_lr_scheduler.step()
             else:
                 pass
+
 
             print('{} Loss:{:.8f}'.format(phase, loss))
             with open(train_log_file, 'a', encoding='utf8') as f:

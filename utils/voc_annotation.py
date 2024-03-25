@@ -25,7 +25,7 @@ if __name__ == "__main__":
     train_percent = 0.8
 
     # VOC数据集所在的文件夹
-    VOCdevkit_path = '../data/voc_diabetic'
+    VOCdevkit_path = '../data/dev_diabetes'
     mask_image_path = 'SegmentationClass'
     imagesets_path = 'ImageSets/Segmentation'
 

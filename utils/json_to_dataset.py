@@ -78,9 +78,12 @@ def json2dataset(src_dataset_path, images_save_path, masks_save_path):
 if __name__ == '__main__':
     print("json_to_dataset")
 
-    jpgs_save_path = "../data/dev_datasets/JPEGImages"
-    pngs_save_path = "../data/dev_datasets/SegmentationClass"
+    # 源数据集路径
     my_dataset_path = "../data/my_dev_dataset"
+    # my_dataset_path = r"D:\Jiao_Chenxu\code_DMT\糖足数据集\Jcxdataset1"
+    # 处理后目标文件夹的路径
+    jpgs_save_path = "../data/dev_diabetes/JPEGImages"
+    pngs_save_path = "../data/dev_diabetes/SegmentationClass"
 
     # 若目标文件夹不存在，则自动创建
     generate_dir(jpgs_save_path)

@@ -64,3 +64,9 @@ def Dice_loss(inputs, target, beta=1, smooth=1e-5):
     score = ((1 + beta ** 2) * tp + smooth) / ((1 + beta ** 2) * tp + beta ** 2 * fn + fp + smooth)
     dice_loss = 1 - torch.mean(score)
     return dice_loss
+
+
+if __name__ == "__main__":
+    print("loss")
+
+    print("success")
