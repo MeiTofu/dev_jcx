@@ -79,11 +79,10 @@ if __name__ == '__main__':
     print("json_to_dataset")
 
     # 源数据集路径
-    my_dataset_path = "../data/my_dev_dataset"
-    # my_dataset_path = r"D:\Jiao_Chenxu\code_DMT\糖足数据集\Jcxdataset1"
+    my_dataset_path = r"C:\Users\40977\Desktop\DNN\MyCode\jcx\dataset_dev"
     # 处理后目标文件夹的路径
-    jpgs_save_path = "../data/dev_diabetes/JPEGImages"
-    pngs_save_path = "../data/dev_diabetes/SegmentationClass"
+    jpgs_save_path = "../data/voc_dev/JPEGImages"
+    pngs_save_path = "../data/voc_dev/SegmentationClass"
 
     # 若目标文件夹不存在，则自动创建
     generate_dir(jpgs_save_path)
