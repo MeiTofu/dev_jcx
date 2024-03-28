@@ -68,7 +68,7 @@ def per_Accuracy(hist):
     return np.sum(np.diag(hist)) / np.maximum(np.sum(hist), 1)
 
 
-def compute_mIoU(gt_dir, pred_dir, png_name_list, num_classes, name_classes=None):
+def compute_mIoU(gt_dir, pred_dir, png_name_list, num_classes, name_classes=None, save_info=None):
     print('Num classes', num_classes)
     # -----------------------------------------#
     #   创建一个全是0的矩阵，是一个混淆矩阵
@@ -129,8 +129,13 @@ def compute_mIoU(gt_dir, pred_dir, png_name_list, num_classes, name_classes=None
     if name_classes is not None:
         for ind_class in range(num_classes):
             print('===>' + name_classes[ind_class] + ':\tIou-' + str(round(IoUs[ind_class] * 100, 2)) +
-                  '%; Recall (equal to the PA)-' + str(round(PA_Recall[ind_class] * 100, 2)) + '%; Precision-' +
+                  '; Recall (equal to the PA)-' + str(round(PA_Recall[ind_class] * 100, 2)) + '%; Precision-' +
                   str(round(Precision[ind_class] * 100, 2)) + "%")
+            if save_info is not None:
+                with open(os.path.join(save_info, "epoch_mIoU.txt"), 'a') as f:
+                    f.write('===>' + name_classes[ind_class] + ':\tIou-' + str(round(IoUs[ind_class] * 100, 2)) +
+                  '; Recall (equal to the PA)-' + str(round(PA_Recall[ind_class] * 100, 2)) + '%; Precision-' +
+                  str(round(Precision[ind_class] * 100, 2)) + "%\n")
 
     # -----------------------------------------------------------------#
     #   在所有验证集图像上求所有类别平均的mIoU值，计算时忽略NaN值

@@ -39,7 +39,7 @@ class Evaluator(object):
         self.mious = [0]
         self.epoches = [0]
         if self.eval_flag:
-            with open(os.path.join(self.log_dir, "epoch_miou.txt"), 'a') as f:
+            with open(os.path.join(self.log_dir, "epoch_mIoU.txt"), 'a') as f:
                 f.write(str(0))
                 f.write("\n")
 
@@ -90,7 +90,7 @@ class Evaluator(object):
         image = Image.fromarray(np.uint8(pr))
         return image
 
-    def on_epoch_end(self, epoch, model_eval, classes_eval=None):
+    def on_epoch_end(self, epoch, model_eval, classes_eval=None, draw_info=True):
         ACC = 0.0
         if (epoch + 1) % self.period == 0 and self.eval_flag:
             self.net = model_eval
@@ -113,33 +113,34 @@ class Evaluator(object):
                 image = self.get_miou_png(image)
                 image.save(os.path.join(pred_dir, image_id + ".png"))
 
-            print("Calculate miou.")
+            print("Calculate mIoU.")
+            # 执行计算mIoU的函数
             _, IoUs, PA_Recall, Precision, Accuracy = compute_mIoU(gt_dir, pred_dir, self.image_ids, self.num_classes,
-                                                         classes_eval)  # 执行计算mIoU的函数
+                                                                   classes_eval, save_info=self.log_dir)
             temp_miou = np.nanmean(IoUs) * 100
             ACC = Accuracy
 
             self.mious.append(temp_miou)
             self.epoches.append(epoch)
 
-            with open(os.path.join(self.log_dir, "epoch_miou.txt"), 'a') as f:
-                f.write(str(temp_miou))
-                f.write("\n")
+            with open(os.path.join(self.log_dir, "epoch_mIoU.txt"), 'a') as f:
+                f.write("epoch: {}, \tmIoU: {}, \tAccuracy:{}%\n\n".format(epoch, str(temp_miou), Accuracy))
 
-            plt.figure()
-            plt.plot(self.epoches, self.mious, 'red', linewidth=2, label='train miou')
+            if draw_info:
+                plt.figure()
+                plt.plot(self.epoches, self.mious, 'red', linewidth=2, label='train mIoU')
 
-            plt.grid(True)
-            plt.xlabel('Epoch')
-            plt.ylabel('Miou')
-            plt.title('A Miou Curve')
-            plt.legend(loc="upper right")
+                plt.grid(True)
+                plt.xlabel('Epoch')
+                plt.ylabel('mIoU')
+                plt.title('A mIoU Curve')
+                plt.legend(loc="upper right")
 
-            plt.savefig(os.path.join(self.log_dir, "epoch_miou.png"))
-            plt.cla()
-            plt.close("all")
+                plt.savefig(os.path.join(self.log_dir, "epoch_mIoU.png"))
+                # plt.cla()
+                # plt.close("all")
 
-            print("Get miou done.")
+            print("Get mIoU done.")
             shutil.rmtree(self.miou_out_path)
         # 返回当前 epoch的准确率
         return ACC

@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 from models.unet import Unet
 from utils.dataloader import UDataset, unet_dataset_collate
 from utils.loss import Focal_Loss, CE_Loss, Dice_loss
-from utils.util import generate_dir, NAME_CLASSES
+from utils.util import generate_dir, NAME_CLASSES, set_random_seed, save_info_when_training
 from utils.util_eval import Evaluator
 from utils.util_metrics import f_score
 
@@ -85,12 +85,15 @@ def run():
     evaluator = Evaluator(args.input_size, args.num_classes, device, image_lines=val_lines,
                           dataset_path=args.dataset_path, log_dir=save_dir, period=args.period)
 
+    loss_list, val_loss_list, val_f_score_list, lr_list = [], [], [], []
+
     # 训练模型
     start_time = time.time()
     for epoch in range(args.epoch):
         print('-' * 38)
         print('Epoch {}/{}'.format(epoch, args.epoch - 1))
         current_lr = optimizer.state_dict()['param_groups'][0]['lr']
+        lr_list.append(current_lr)
         print('current model optimizer of lr:{}'.format(current_lr))
 
         # every epoch has train and validation phase
@@ -143,15 +146,17 @@ def run():
             # save data / learning rate regulator
             if phase == 'train':
                 exp_lr_scheduler.step()
+                loss_list.append(epoch_loss)
                 print('{} Loss:{:.8f} '.format(phase, epoch_loss))
             else:
                 # 计算当前 epoch 的 precise mIoU
-                epoch_acc = evaluator.on_epoch_end(epoch, model_eval=model, classes_eval=NAME_CLASSES)
+                epoch_acc = evaluator.on_epoch_end(epoch, model_eval=model, classes_eval=NAME_CLASSES, draw_info=False)
+                val_loss_list.append(epoch_loss)
+                val_f_score_list.append(epoch_score.cpu().numpy())
                 print('{} Loss:{:.8f} F_score:{:.4f}'.format(phase, epoch_loss, epoch_score))
                 if args.best_acc < epoch_acc:
                     args.best_acc = epoch_acc
-                    torch.save(model.state_dict(), os.path.join(save_dir, '{}_loss{:.4f}_acc{:.2f}.pth'
-                                                                .format(epoch, epoch_loss, epoch_acc)))
+                    torch.save(model.state_dict(), os.path.join(save_dir, 'best_model_weight.pth'))
 
             with open(train_log_file, 'a', encoding='utf8') as f:
                 f.write('Epoch {}/{},\tphase:{}\ncurrent_lr:{:.6f},\tloss:{:.6f},\tf_score:{:.4f}\t\n\n'.format(
@@ -160,6 +165,7 @@ def run():
             # save weight
             if phase == 'val' and epoch == args.epoch - 1:
                 torch.save(model.state_dict(), os.path.join(save_dir, 'last_loss_{:.4f}.pth'.format(epoch_loss)))
+                save_info_when_training(loss_list, val_loss_list, val_f_score_list, lr_list, save_dir)
 
     time_spend = time.time() - start_time
 
@@ -204,13 +210,13 @@ if __name__ == '__main__':
     # 训练参数
     parser.add_argument('--epoch', type=int, default=20,
                         help='number of epochs for training')
-    parser.add_argument('--period', type=int, default=5,
+    parser.add_argument('--period', type=int, default=20,
                         help='Evaluated every interval epoch')
     parser.add_argument('--batch_size', default=4,
                         help='batch size when training.')
     parser.add_argument('--num_workers', default=8,
                         help='load data num_workers when training.')
-    parser.add_argument('--init_lr', default=0.00005, type=float,
+    parser.add_argument('--init_lr', default=0.0005, type=float,
                         help='初始学习率，0.0005 是训练的默认值')
 
     # 损失函数相关参数
@@ -224,9 +230,9 @@ if __name__ == '__main__':
     parser.add_argument('--weight_decay', default=1e-4, type=float,
                         help='Adam 优化器的参数 weight decay')
     # 学习率调节器相关参数
-    parser.add_argument('--scheduler_type', default='MultiStepLR', type=str,
+    parser.add_argument('--scheduler_type', default='CosineAnnealingWarmRestarts', type=str,
                         help='选择使用的学习率调节器，可选(MultiStepLR, CosineAnnealingWarmRestarts)')
-    parser.add_argument('--lr_steps', default=[10, 60], type=list,
+    parser.add_argument('--lr_steps', default=[10, 18], type=list,
                         help='当使用 MultiStepLR 时，在指定步长进行学习率调节')
     parser.add_argument('--lr_gamma', default=0.2, type=float,
                         help='当使用 MultiStepLR 时，学习率调节系数，即当前学习率乘以该系数')
@@ -234,7 +240,9 @@ if __name__ == '__main__':
                         help='当使用 CosineAnnealingWarmRestarts 时的最小学习率')
 
     args = parser.parse_args()
-
+    # 设置随机种子，保证结果的可复现
+    set_random_seed(args.seed)
+    # 选择训练模型使用的设备
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()))
     print(torch.cuda.get_device_name(device))
@@ -250,7 +258,7 @@ if __name__ == '__main__':
     # 读取数据集对应的txt
     with open(os.path.join(args.train_txt_path, "train.txt"), "r") as f:
         train_lines = f.readlines()
-    with open(os.path.join(args.train_txt_path, "train.txt"), "r") as f:
+    with open(os.path.join(args.train_txt_path, "val.txt"), "r") as f:
         val_lines = f.readlines()
 
     dataset = {'train': UDataset(train_lines, num_classes=args.num_classes, train=True, dataset_path=args.dataset_path),

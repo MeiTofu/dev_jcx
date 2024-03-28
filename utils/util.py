@@ -6,12 +6,15 @@
 @Message: null
 """
 import os
+import random
 
 import numpy as np
 
 # CLASSES = ["_background_","aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow",
 #            "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
+import torch
 from PIL import Image, ImageDraw, ImageFont
+from matplotlib import pyplot as plt
 
 CLASSES = ["_background_", "H", "T1", "T2", "T3", "T4", "T5"]
 
@@ -25,6 +28,15 @@ COLORS_CV = [(0, 0, 0), (128, 0, 0), (0, 128, 0), (128, 128, 0), (0, 0, 128), (1
              (128, 64, 12)]
 
 COLORS_PIL = [(255, 69, 0), (0, 255, 0), (255, 255, 0), (0, 0, 255), (255, 0, 255), (0, 255, 255), (255, 255, 255)]
+
+
+def set_random_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    print('You have chosen to seed training. This will slow down your training!')
 
 
 def cvtColor(image):
@@ -146,3 +158,34 @@ def add_info_to_image(image,
         x = x + distance
 
     return image
+
+
+def save_info_when_training(train_loss, val_loss, val_acc, lr_list, save_path='', save=True):
+    X = range(0, len(train_loss))
+    y_train = train_loss
+    plt.figure(figsize=(12, 7), dpi=200)
+    plt.subplot(1, 3, 1)
+    plt.plot(X, lr_list, 'y.-', label='lr')
+    plt.title('lr vs epochs item')
+    plt.ylabel('lr')
+
+    x_loss = range(0, len(val_loss))
+    plt.subplot(1, 3, 2)
+    plt.plot(x_loss, y_train, 'b.-', label='train')
+    plt.title('train/val loss vs epochs item')
+    plt.ylabel('train/val loss')
+    y_val = val_loss
+    plt.plot(X, y_val, 'r.-', label='val')
+    plt.legend()
+
+    x_acc = range(0, len(val_acc))
+    plt.subplot(1, 3, 3)
+    plt.plot(x_acc, val_acc, 'g.-', label='val')
+    plt.title('val f_score vs epochs item')
+    plt.ylabel('val f_score')
+
+    plt.tight_layout()
+    if save:
+        plt.savefig(save_path + '/train_info.png')
+    else:
+        plt.show()
