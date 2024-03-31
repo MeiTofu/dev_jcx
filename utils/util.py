@@ -95,6 +95,28 @@ def generate_dir(dir_path):
         os.makedirs(dir_path)
 
 
+def generate_save_epoch(total_epoch: int, period: int = -1):
+    """
+    基于二分法或固定间隔次数生成需要进行评估的轮次列表
+    :param total_epoch: 本次训练的轮次数
+    :param period: 间隔次数
+    :return: 生成的评估轮次列表
+    """
+    target_list = []
+    if period == -1:
+        target = 0
+        remainder = total_epoch
+        while target < total_epoch - 1:
+            target = target + remainder // 2 + 1
+            target_list.append(target - 1)
+            remainder = total_epoch - target
+    else:
+        for epoch in range(total_epoch):
+            if (epoch + 1) % period == 0:
+                target_list.append(epoch)
+    return target_list
+
+
 def draw_filled_rectangle(draw,
                           rectangle_position: tuple = (50, 50),
                           rectangle_size: int = 100,

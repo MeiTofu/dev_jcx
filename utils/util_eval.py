@@ -16,12 +16,12 @@ from PIL import Image
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 
-from utils.util import cvtColor, resize_image, preprocess_input
+from utils.util import cvtColor, resize_image, preprocess_input, generate_save_epoch
 from utils.util_metrics import compute_mIoU
 
 
 class Evaluator(object):
-    def __init__(self, input_shape, num_classes, device, image_lines, dataset_path, log_dir, period=1, eval_flag=True,
+    def __init__(self, input_shape, num_classes, device, image_lines, dataset_path, log_dir, total_epoch: int, eval_flag=True,
                  miou_out_path=".temp_miou_out"):
         super(Evaluator, self).__init__()
 
@@ -33,7 +33,8 @@ class Evaluator(object):
         self.device = device
         self.miou_out_path = miou_out_path
         self.eval_flag = eval_flag
-        self.period = period
+        self.total_epoch = total_epoch
+        self.epoch_list = generate_save_epoch(total_epoch)
 
         self.image_ids = [image_id.split()[0] for image_id in image_lines]
         self.mious = [0]
@@ -92,7 +93,7 @@ class Evaluator(object):
 
     def on_epoch_end(self, epoch, model_eval, classes_eval=None, draw_info=True):
         ACC = 0.0
-        if (epoch + 1) % self.period == 0 and self.eval_flag:
+        if ((epoch in self.epoch_list) or epoch == self.total_epoch - 1) and self.eval_flag:
             self.net = model_eval
             gt_dir = os.path.join(self.dataset_path, "SegmentationClass/")
             pred_dir = os.path.join(self.miou_out_path, 'detection-results')
