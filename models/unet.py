@@ -26,8 +26,7 @@ class Unet(nn.Module):
 
         self.head = Head(backbone_type=backbone_type, num_classes=num_classes)
 
-        if not pretrained:
-            self._initialize_weights()
+        self._initialize_weights()
 
     def _initialize_weights(self):
         for m in self.modules():

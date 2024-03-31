@@ -83,7 +83,7 @@ def run():
 
     # 定义评估器
     evaluator = Evaluator(args.input_size, args.num_classes, device, image_lines=val_lines,
-                          dataset_path=args.dataset_path, log_dir=save_dir, period=args.period)
+                          dataset_path=args.dataset_path, log_dir=save_dir, total_epoch=args.epoch)
 
     loss_list, val_loss_list, val_f_score_list, lr_list = [], [], [], []
 
@@ -141,7 +141,7 @@ def run():
                 running_loss += loss.item()
 
             epoch_loss = running_loss / (dataset_sizes[phase] // args.batch_size)
-            epoch_score = running_score / (dataset_sizes[phase]//args.batch_size)
+            epoch_score = running_score / (dataset_sizes[phase] // args.batch_size)
 
             # save data / learning rate regulator
             if phase == 'train':
@@ -160,7 +160,7 @@ def run():
 
             with open(train_log_file, 'a', encoding='utf8') as f:
                 f.write('Epoch {}/{},\tphase:{}\ncurrent_lr:{:.6f},\tloss:{:.6f},\tf_score:{:.4f}\t\n\n'.format(
-                    epoch, args.epoch-1, phase, current_lr, epoch_loss, epoch_score))
+                    epoch, args.epoch - 1, phase, current_lr, epoch_loss, epoch_score))
 
             # save weight
             if phase == 'val' and epoch == args.epoch - 1:
@@ -169,20 +169,23 @@ def run():
 
     time_spend = time.time() - start_time
 
-    print('\nThe total time spent training the model is {:.0f}h{:.0f}m{:.0f}.'.format(
+    print('\nThe total time spent training the model is {:.0f}h{:.0f}m{:.0f}s.'.format(
         time_spend // 3600, time_spend % 3600 // 60, time_spend % 60))
+    with open(train_log_file, 'a', encoding='utf8') as f:
+        f.write('\nThe total time spent training the model is {:.0f}h{:.0f}m{:.0f}s.'.format(
+            time_spend // 3600, time_spend % 3600 // 60, time_spend % 60))
 
 
 if __name__ == '__main__':
     print("train")
     parser = argparse.ArgumentParser(description='Unet Train Info')
-    parser.add_argument('--info', default=None,
+    parser.add_argument('--info', default=['JUp_residual_cat'],
                         help='模型修改备注信息')
     parser.add_argument('--save_path', default='run',
                         help='训练信息保存路径')
     parser.add_argument('--seed', default=42,
                         help='random seed')
-    parser.add_argument('--device', default='cuda:0',
+    parser.add_argument('--device', default='cuda:1',
                         help='device')
     parser.add_argument('--input_size', default=(512, 512),
                         help='the model input image size')
@@ -196,23 +199,23 @@ if __name__ == '__main__':
                         help='目标类别数，对应网络的输出特征通道数')
     parser.add_argument('--pretrain_backbone', type=bool, default=False,
                         help='主干网络是否加载预训练权重')
-    parser.add_argument('--weight_path', default="weight/init_unet.pth",
+    parser.add_argument('--weight_path', default="weight/resnet50-19c8e357.pth",
                         help='pre-training model load path.')
 
     # 加载数据相关参数
-    parser.add_argument('--dataset_path', type=str, default="data/VOCdevkit",
+    parser.add_argument('--dataset_path', type=str, default="../../dataset/voc_dev",
                         help='数据集路径')
-    parser.add_argument('--train_txt_path', type=str, default="data/VOCdevkit/ImageSets/Segmentation",
+    parser.add_argument('--train_txt_path', type=str, default="../../dataset/voc_dev/ImageSets/Segmentation",
                         help='train/val 划分的 txt 文件路径')
     parser.add_argument('--mode', type=bool, default=True,
                         help='当前网络的训练模式：train/val')
 
     # 训练参数
-    parser.add_argument('--epoch', type=int, default=20,
+    parser.add_argument('--epoch', type=int, default=150,
                         help='number of epochs for training')
     parser.add_argument('--period', type=int, default=20,
                         help='Evaluated every interval epoch')
-    parser.add_argument('--batch_size', default=4,
+    parser.add_argument('--batch_size', default=6,
                         help='batch size when training.')
     parser.add_argument('--num_workers', default=8,
                         help='load data num_workers when training.')
@@ -251,7 +254,7 @@ if __name__ == '__main__':
     model = Unet(backbone_type=args.backbone_type, num_classes=args.num_classes, pretrained=args.pretrain_backbone)
     model.to(device)
     if args.weight_path is not None:
-        model.load_state_dict(torch.load(args.weight_path, map_location=lambda storage, loc: storage), strict=True)
+        model.load_state_dict(torch.load(args.weight_path, map_location=lambda storage, loc: storage), strict=False)
         print("已加载预训练权重：{}".format(args.weight_path))
 
     # 加载数据集
