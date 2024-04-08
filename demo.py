@@ -5,6 +5,11 @@
 @Create: 2024/3/23 19:32
 @Message: null
 """
+import os
+import random
+import shutil
+
+import numpy as np
 import torch
 from torch.optim.lr_scheduler import CosineAnnealingLR,CosineAnnealingWarmRestarts,StepLR
 import torch.nn as nn
@@ -15,18 +20,79 @@ from utils.util import generate_save_epoch
 
 if __name__ == "__main__":
     print("demo")
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+
+    # 创建示例张量，维度为 (1, 262144, 7)
+    temp_tp = torch.randn(2, 4)
+    print(temp_tp)
+
+    # 对维度 0 和维度 1 进行求和
+    sum_result = torch.sum(temp_tp, dim=1)
+
+    print("原始张量形状:", temp_tp.shape)
+    print("对维度 0 和 1 求和后的结果形状:", sum_result.shape)
+    print(sum_result)
+
     # raise ValueError("数据集过小，无法继续进行训练，请扩充数据集。")
 
-    # 保存模型权重epoch
-    epochs = 150
-    epoch_list = generate_save_epoch(epochs)
-    print(epoch_list)
-    # epoch_list = generate_save_epoch(epochs, period=20)
-    # print(epoch_list)
+    # COLORS_CV = [(0, 0, 0), (128, 0, 0), (0, 128, 0), (128, 128, 0), (0, 0, 128), (128, 0, 128), (0, 128, 128),
+    #              (128, 128, 128), (64, 0, 0), (192, 0, 0), (64, 128, 0), (192, 128, 0), (64, 0, 128), (192, 0, 128),
+    #              (64, 128, 128), (192, 128, 128), (0, 64, 0), (128, 64, 0), (0, 192, 0), (128, 192, 0), (0, 64, 128),
+    #              (128, 64, 12)]
+    #
+    #
+    # def convert_color(color_cv):
+    #     colors = []
+    #     for i, c in enumerate(color_cv):
+    #         colors.append(int((c / 128 * 255) if c <= 128 else c))
+    #
+    #     return colors[0], colors[1], colors[2]
+    #
+    # # 测试转换
+    # # original_color = (128, 0, 0)
+    # COLORS_PIL = [convert_color(original_color) for original_color in COLORS_CV]
+    # print("Original Color:\n", COLORS_CV)
+    # print(COLORS_PIL)
 
-    for epoch in range(epochs):
-        if epoch in epoch_list:
-            print(epoch, "eval model")
+    # ===========================================
+    # 从B导给的VOC 数据集中随机挑选指定数量的样本用于训练
+    # ===========================================
+    # random.seed(42)
+    # src_seg_dir = r"C:\Users\40977\Desktop\DNN\MyCode\jcx\dataset\VOCdevkit\VOC2007\SegmentationClass"
+    # src_img_dir = r"C:\Users\40977\Desktop\DNN\MyCode\jcx\dataset\VOCdevkit\VOC2007\JPEGImages"
+    #
+    # dst_img_dir = "data/VOCdevkit/JPEGImages"
+    # dst_seg_dir = "data/VOCdevkit/SegmentationClass"
+    #
+    # seg_list = os.listdir(src_seg_dir)
+    # random.shuffle(seg_list)
+    # for i, seg_name in enumerate(seg_list):
+    #     seg_prefix, seg_extension = os.path.splitext(seg_name)
+    #     img_name = seg_prefix + '.jpg'
+    #     if i < 2000:
+    #         src_seg_path = os.path.join(src_seg_dir, seg_name)
+    #         dst_seg_path = os.path.join(dst_seg_dir, seg_name)
+    #         src_img_path = os.path.join(src_img_dir, img_name)
+    #         dst_img_path = os.path.join(dst_img_dir, img_name)
+    #         shutil.copy(src_seg_path, dst_seg_path)
+    #         shutil.copy(src_img_path, dst_img_path)
+    #     else:
+    #         break
+    #
+    # print("done")
+
+    # # 保存模型权重epoch
+    # epochs = 150
+    # epoch_list = generate_save_epoch(epochs)
+    # print(epoch_list)
+    # # epoch_list = generate_save_epoch(epochs, period=20)
+    # # print(epoch_list)
+    #
+    # for epoch in range(epochs):
+    #     if epoch in epoch_list:
+    #         print(epoch, "eval model")
 
     # # 生成有序数组
     # arr = torch.arange(2 * 3 * 4)

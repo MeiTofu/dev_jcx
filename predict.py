@@ -52,6 +52,7 @@ def show_segmentation_results(origi_img, prs, total_classes, label_info=True):
         seg_img[:, :, 2] += ((prs[:, :] == c) * colors[c][2]).astype('uint8')
 
     my_image = np.array(origi_img)
+    # 将预测结果不为背景（ > 0）的像素点设为白色(255, 255, 255) => 方便目标区域着色
     my_image[:, :, :][seg_img[:, :, :] > 0] = 255
     show_image = Image.fromarray(np.uint8(my_image))
     if label_info:
@@ -62,7 +63,7 @@ def show_segmentation_results(origi_img, prs, total_classes, label_info=True):
 
 if __name__ == "__main__":
     print("predict")
-    parser = argparse.ArgumentParser(description='Unet Inference Info')
+    parser = argparse.ArgumentParser(description='Unet Predict Info')
     parser.add_argument('--image_path', default='data/voc_dev/JPEGImages/T2_00048.jpg', help='需要预测的文件路径')
     parser.add_argument('--device', default='cuda:0', help='推理设备')
     parser.add_argument('--input_size', default=(512, 512), help='the model input image size')

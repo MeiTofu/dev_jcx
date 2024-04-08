@@ -41,21 +41,40 @@ class JUp(nn.Module):
     def forward(self, inputs1, inputs2):    # (1,1024,32,32) (1,2048,16,16)
         outputs2 = self.subpixel_convolutional_blocks(inputs2)
         outputs = torch.cat([inputs1, outputs2], 1)     # 1536    # (1,3072, 32,32)
-
-        # 残差连接
-        # residual = outputs
-        # residual = self.separableConv2d(residual)
-
         outputs = self.conv1(outputs)   # (1,512,32,32)
         outputs = self.relu(outputs)    # (1,512,32,32)
         outputs = self.conv2(outputs)   # (1,512,32,32)
         outputs = self.relu(outputs)    # (1,512,32,32)
-        # outputs = outputs + residual
         return outputs  # (1,512,32,32)
 
-class JUp_Concate(nn.Module):
+
+class JUp_Add(nn.Module):
+    def __init__(self, in_size, out_size, up_channels=2048):
+        super(JUp_Add, self).__init__()
+        self.conv1 = nn.Conv2d(in_size, out_size, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, padding=1)
+        self.subpixel_convolutional_blocks = SubPixelConvolutionalBlock(kernel_size=3, n_channels=up_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.separableConv2d = SeparableConv2d(in_channels=in_size, out_channels=out_size)
+
+    def forward(self, inputs1, inputs2):    # (1,1024,32,32) (1,2048,16,16)
+        outputs2 = self.subpixel_convolutional_blocks(inputs2)
+        outputs = torch.cat([inputs1, outputs2], 1)     # 1536    # (1,3072, 32,32)
+
+        # 残差连接
+        residual = outputs
+        residual = self.separableConv2d(residual)
+        outputs = self.conv1(outputs)   # (1,512,32,32)
+        outputs = self.relu(outputs)    # (1,512,32,32)
+        outputs = self.conv2(outputs)   # (1,512,32,32)
+        outputs = self.relu(outputs)    # (1,512,32,32)
+        outputs = outputs + residual
+        return outputs  # (1,512,32,32)
+
+
+class JUp_Concat(nn.Module):
     def __init__(self, in_size, out_size, up_channels=2048, repair_channel=1024):
-        super(JUp_Concate, self).__init__()
+        super(JUp_Concat, self).__init__()
         self.conv1 = nn.Conv2d(in_size, out_size, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, padding=1)
         self.subpixel_convolutional_blocks = SubPixelConvolutionalBlock(kernel_size=3, n_channels=up_channels)
@@ -84,7 +103,8 @@ class JUp_Concate(nn.Module):
 class Head(nn.Module):
     def __init__(self,
                  backbone_type="resnet50",
-                 num_classes=7):
+                 num_classes=7,
+                 head_up="unetUp"):
         super(Head, self).__init__()
 
         self.backbone_type = backbone_type
@@ -97,30 +117,41 @@ class Head(nn.Module):
             self.in_filters = [192, 512, 1024, 3072]
 
         # upsampling
-        # # 64,64,512
-        # self.up_concat4 = unetUp(self.in_filters[3], self.out_filters[3])
-        # # 128,128,256
-        # self.up_concat3 = unetUp(self.in_filters[2], self.out_filters[2])
-        # # 256,256,128
-        # self.up_concat2 = unetUp(self.in_filters[1], self.out_filters[1])
-        # # 512,512,64
-        # self.up_concat1 = unetUp(self.in_filters[0], self.out_filters[0])
-
-        # self.up_concat4 = JUp(1536, self.out_filters[3], up_channels=2048)
-        # # 128,128,256
-        # self.up_concat3 = JUp(640, self.out_filters[2], up_channels=512)
-        # # 256,256,128
-        # self.up_concat2 = JUp(320, self.out_filters[1], up_channels=256)
-        # # 512,512,64
-        # self.up_concat1 = JUp(96, self.out_filters[0], up_channels=128)
-
-        self.up_concat4 = JUp_Concate(1536, self.out_filters[3], up_channels=2048, repair_channel=1024)
-        # 128,128,256
-        self.up_concat3 = JUp_Concate(640, self.out_filters[2], up_channels=512, repair_channel=512)
-        # 256,256,128
-        self.up_concat2 = JUp_Concate(320, self.out_filters[1], up_channels=256, repair_channel=256)
-        # 512,512,64
-        self.up_concat1 = JUp_Concate(96, self.out_filters[0], up_channels=128, repair_channel=128)
+        if head_up == 'unetUp':
+            # 64,64,512
+            self.up_concat4 = unetUp(self.in_filters[3], self.out_filters[3])
+            # 128,128,256
+            self.up_concat3 = unetUp(self.in_filters[2], self.out_filters[2])
+            # 256,256,128
+            self.up_concat2 = unetUp(self.in_filters[1], self.out_filters[1])
+            # 512,512,64
+            self.up_concat1 = unetUp(self.in_filters[0], self.out_filters[0])
+        elif head_up == 'JUp':
+            self.up_concat4 = JUp(1536, self.out_filters[3], up_channels=2048)
+            # 128,128,256
+            self.up_concat3 = JUp(640, self.out_filters[2], up_channels=512)
+            # 256,256,128
+            self.up_concat2 = JUp(320, self.out_filters[1], up_channels=256)
+            # 512,512,64
+            self.up_concat1 = JUp(96, self.out_filters[0], up_channels=128)
+        elif head_up == 'JUp_Add':
+            self.up_concat4 = JUp_Add(1536, self.out_filters[3], up_channels=2048)
+            # 128,128,256
+            self.up_concat3 = JUp_Add(640, self.out_filters[2], up_channels=512)
+            # 256,256,128
+            self.up_concat2 = JUp_Add(320, self.out_filters[1], up_channels=256)
+            # 512,512,64
+            self.up_concat1 = JUp_Add(96, self.out_filters[0], up_channels=128)
+        elif head_up == "JUp_Concat":
+            self.up_concat4 = JUp_Concat(1536, self.out_filters[3], up_channels=2048, repair_channel=1024)
+            # 128,128,256
+            self.up_concat3 = JUp_Concat(640, self.out_filters[2], up_channels=512, repair_channel=512)
+            # 256,256,128
+            self.up_concat2 = JUp_Concat(320, self.out_filters[1], up_channels=256, repair_channel=256)
+            # 512,512,64
+            self.up_concat1 = JUp_Concat(96, self.out_filters[0], up_channels=128, repair_channel=128)
+        else:
+            raise ValueError("{}为不支持的特征融合的方式！可选: ['unetUp', 'JUp', 'JUp_Add', 'JUp_Concat']".format(head_up))
 
         if self.backbone_type == 'resnet50':
             self.up_conv = nn.Sequential(

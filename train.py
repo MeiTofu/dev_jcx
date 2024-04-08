@@ -20,9 +20,9 @@ from torch.utils.data import DataLoader
 from models.unet import Unet
 from utils.dataloader import UDataset, unet_dataset_collate
 from utils.loss import Focal_Loss, CE_Loss, Dice_loss
-from utils.util import generate_dir, NAME_CLASSES, set_random_seed, save_info_when_training
+from utils.util import generate_dir, CLASSES, set_random_seed, save_info_when_training
 from utils.util_eval import Evaluator
-from utils.util_metrics import f_score
+from utils.util_metrics import calculate_score
 
 
 def run():
@@ -44,7 +44,7 @@ def run():
     # 根据当前batch_size，自适应调整学习率
     if len(dataset['train']) > 500:
         nbs = 16
-        lr_limit_max = 1e-4 if args.optimizer_type == 'Adam' else 1e-1
+        lr_limit_max = 5e-4 if args.optimizer_type == 'Adam' else 1e-1
         lr_limit_min = 1e-4 if args.optimizer_type == 'Adam' else 5e-4
         init_lr_fit = min(max(args.batch_size / nbs * args.init_lr, lr_limit_min), lr_limit_max)
         min_lr_fit = min(max(args.batch_size / nbs * args.min_lr, lr_limit_min * 1e-2), lr_limit_max * 1e-2)
@@ -106,11 +106,14 @@ def run():
 
             running_loss = 0.0
             running_score = 0.0
+            running_mIoU = 0.0
+            bs = 0
             for batch in tqdm(dataloader[phase], desc=phase + ' Data Processing Progress'):
                 imgs, pngs, labels = batch
                 imgs = imgs.to(device)
                 pngs = pngs.to(device)
                 labels = labels.to(device)
+                bs = imgs.size()[0]
 
                 # clear gradient
                 optimizer.zero_grad()
@@ -134,14 +137,16 @@ def run():
                         loss.backward()
                         optimizer.step()
                     else:
-                        val_score = f_score(outputs, labels)
-                        running_score += val_score
+                        dice_coefficient, mIoU, precision, recall = calculate_score(outputs, labels)
+                        running_score += dice_coefficient
+                        running_mIoU += mIoU
 
                 # statistics loss
                 running_loss += loss.item()
 
-            epoch_loss = running_loss / (dataset_sizes[phase] // args.batch_size)
-            epoch_score = running_score / (dataset_sizes[phase] // args.batch_size)
+            epoch_loss = running_loss / (dataset_sizes[phase] / bs)
+            epoch_score = running_score / (dataset_sizes[phase] / bs)
+            epoch_mIoU = running_mIoU / (dataset_sizes[phase] / bs)
 
             # save data / learning rate regulator
             if phase == 'train':
@@ -150,17 +155,20 @@ def run():
                 print('{} Loss:{:.8f} '.format(phase, epoch_loss))
             else:
                 # 计算当前 epoch 的 precise mIoU
-                epoch_acc = evaluator.on_epoch_end(epoch, model_eval=model, classes_eval=NAME_CLASSES, draw_info=False)
+                epoch_acc = evaluator.on_epoch_end(epoch, model_eval=model, classes_eval=CLASSES, draw_info=False)
                 val_loss_list.append(epoch_loss)
-                val_f_score_list.append(epoch_score.cpu().numpy())
-                print('{} Loss:{:.8f} F_score:{:.4f}'.format(phase, epoch_loss, epoch_score))
+                val_f_score_list.append(epoch_score)
+                print('{} Loss:{:.8f} dice:{:.4f} mIou:{:.4f}'.format(phase, epoch_loss, epoch_score, epoch_mIoU))
+                print("最后一个batch的指标：precision:", precision, "\trecall:", recall)
                 if args.best_acc < epoch_acc:
                     args.best_acc = epoch_acc
                     torch.save(model.state_dict(), os.path.join(save_dir, 'best_model_weight.pth'))
 
             with open(train_log_file, 'a', encoding='utf8') as f:
-                f.write('Epoch {}/{},\tphase:{}\ncurrent_lr:{:.6f},\tloss:{:.6f},\tf_score:{:.4f}\t\n\n'.format(
-                    epoch, args.epoch - 1, phase, current_lr, epoch_loss, epoch_score))
+                if phase == 'train':
+                    f.write('\n' + '-' * 42 + '\n')
+                f.write('Epoch {}/{},\tphase:{}\ncurrent_lr:{:.6f},\tloss:{:.6f},\tdice:{:.4f},\tmIoU:{:.4f}\n'
+                        .format(epoch, args.epoch - 1, phase, current_lr, epoch_loss, epoch_score, epoch_mIoU))
 
             # save weight
             if phase == 'val' and epoch == args.epoch - 1:
@@ -179,13 +187,13 @@ def run():
 if __name__ == '__main__':
     print("train")
     parser = argparse.ArgumentParser(description='Unet Train Info')
-    parser.add_argument('--info', default=['JUp_residual_cat'],
+    parser.add_argument('--info', default=['TODO'],
                         help='模型修改备注信息')
     parser.add_argument('--save_path', default='run',
                         help='训练信息保存路径')
     parser.add_argument('--seed', default=42,
                         help='random seed')
-    parser.add_argument('--device', default='cuda:1',
+    parser.add_argument('--device', default='cuda:0',
                         help='device')
     parser.add_argument('--input_size', default=(512, 512),
                         help='the model input image size')
@@ -199,19 +207,21 @@ if __name__ == '__main__':
                         help='目标类别数，对应网络的输出特征通道数')
     parser.add_argument('--pretrain_backbone', type=bool, default=False,
                         help='主干网络是否加载预训练权重')
-    parser.add_argument('--weight_path', default="weight/resnet50-19c8e357.pth",
+    parser.add_argument('--weight_path', default="weight/init_unet.pth",
                         help='pre-training model load path.')
+    parser.add_argument('--head_up', type=str, default="unetUp",
+                        help='选择头网络的多尺度特征融合方式')
 
     # 加载数据相关参数
-    parser.add_argument('--dataset_path', type=str, default="../../dataset/voc_dev",
+    parser.add_argument('--dataset_path', type=str, default="data/voc_dev",
                         help='数据集路径')
-    parser.add_argument('--train_txt_path', type=str, default="../../dataset/voc_dev/ImageSets/Segmentation",
-                        help='train/val 划分的 txt 文件路径')
-    parser.add_argument('--mode', type=bool, default=True,
-                        help='当前网络的训练模式：train/val')
+    parser.add_argument('--train_txt_path', type=str, default="data/voc_dev/ImageSets/Segmentation/val.txt",
+                        help='train 划分的 txt 文件路径')
+    parser.add_argument('--val_txt_path', type=str, default="data/voc_dev/ImageSets/Segmentation/val.txt",
+                        help='val 划分的 txt 文件路径')
 
     # 训练参数
-    parser.add_argument('--epoch', type=int, default=150,
+    parser.add_argument('--epoch', type=int, default=5,
                         help='number of epochs for training')
     parser.add_argument('--period', type=int, default=20,
                         help='Evaluated every interval epoch')
@@ -251,7 +261,8 @@ if __name__ == '__main__':
     print(torch.cuda.get_device_name(device))
 
     # 实例化模型
-    model = Unet(backbone_type=args.backbone_type, num_classes=args.num_classes, pretrained=args.pretrain_backbone)
+    model = Unet(backbone_type=args.backbone_type, num_classes=args.num_classes, pretrained=args.pretrain_backbone,
+                 head_up=args.head_up)
     model.to(device)
     if args.weight_path is not None:
         model.load_state_dict(torch.load(args.weight_path, map_location=lambda storage, loc: storage), strict=False)
@@ -259,9 +270,9 @@ if __name__ == '__main__':
 
     # 加载数据集
     # 读取数据集对应的txt
-    with open(os.path.join(args.train_txt_path, "train.txt"), "r") as f:
+    with open(os.path.join(args.train_txt_path), "r") as f:
         train_lines = f.readlines()
-    with open(os.path.join(args.train_txt_path, "val.txt"), "r") as f:
+    with open(os.path.join(args.val_txt_path), "r") as f:
         val_lines = f.readlines()
 
     dataset = {'train': UDataset(train_lines, num_classes=args.num_classes, train=True, dataset_path=args.dataset_path),

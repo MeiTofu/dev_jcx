@@ -14,7 +14,7 @@ from models.vgg import VGG16
 
 
 class Unet(nn.Module):
-    def __init__(self, backbone_type="resnet50", num_classes=7, pretrained=False):
+    def __init__(self, backbone_type="resnet50", num_classes=7, pretrained=False, head_up="unetUp"):
         super(Unet, self).__init__()
         self.backbone_type = backbone_type
         self.num_classes = num_classes
@@ -24,7 +24,7 @@ class Unet(nn.Module):
         elif backbone_type == "resnet50":
             self.backbone = resnet50(pretrained=pretrained)
 
-        self.head = Head(backbone_type=backbone_type, num_classes=num_classes)
+        self.head = Head(backbone_type=backbone_type, num_classes=num_classes, head_up=head_up)
 
         self._initialize_weights()
 

@@ -16,6 +16,7 @@ import torch.nn.functional as F
 from PIL import Image
 
 
+# TODO: 这个函数有问题，batch size 越大 f1 score 分数越小
 def f_score(inputs, target, beta=1, smooth=1e-5, threhold=0.5):
     n, c, h, w = inputs.size()
     nt, ht, wt, ct = target.size()
@@ -37,6 +38,44 @@ def f_score(inputs, target, beta=1, smooth=1e-5, threhold=0.5):
     score = ((1 + beta ** 2) * tp + smooth) / ((1 + beta ** 2) * tp + beta ** 2 * fn + fp + smooth)
     score = torch.mean(score)
     return score
+
+
+def calculate_score(inputs, target, smooth=1e-5, threshold=0.5):
+    """
+    对预测结果计算相关指标，包括dice系数、mIoU、precision以及recall
+    参考 https://github.com/kiharalab/ACC-UNet/blob/main/Experiments/utils.py
+    :param inputs: 预测结果
+    :param target: 对应GT
+    :param smooth: 调节系数，防止分母为零
+    :param threshold: 阈值
+    :return:
+    """
+    n, c, h, w = inputs.size()  # (1,7,512,512)
+    nt, ht, wt, ct = target.size()  # (1,512,512,8)
+
+    temp_inputs = torch.softmax(inputs.transpose(1, 2).transpose(2, 3).contiguous().view(n, -1, c), -1)  # (1,262144,7)
+    temp_target = target.view(n, -1, ct)[..., :-1]    # (1,262144,8)
+
+    temp_inputs = torch.gt(temp_inputs, threshold).float()   # (1,262144,7)
+    temp_tp = temp_target * temp_inputs   # (1,262144,7)
+
+    dice_coef, mIoU, precision, recall = 0.0, 0.0, 0.0, 0.0
+    for bs in range(n):
+        tp = torch.sum(temp_tp[bs], dim=0)     # (7) 预测正确的正样本（gt像素点）
+        fp = torch.sum(temp_inputs[bs], dim=0) - tp
+        fn = torch.sum(temp_target[bs], dim=0) - tp
+        # 计算dice coefficient，和f1 score 一样？
+        temp_dice = (2 * tp + smooth) / (2 * tp + fp + fn + smooth)
+        dice_coef += torch.mean(temp_dice).item()
+        temp_mIoU = (tp + smooth) / (tp + fn + fp + smooth)
+        mIoU += torch.mean(temp_mIoU).item()
+
+        temp_precision = (tp + smooth) / (tp + fp + smooth)
+        precision += torch.mean(temp_precision).item()
+        temp_recall = (tp + smooth) / (tp + fn + smooth)
+        recall += torch.mean(temp_recall).item()
+
+    return dice_coef/n, mIoU/n, precision/n, recall/n
 
 
 # 设标签宽W，长H
@@ -134,8 +173,9 @@ def compute_mIoU(gt_dir, pred_dir, png_name_list, num_classes, name_classes=None
             if save_info is not None:
                 with open(os.path.join(save_info, "epoch_mIoU.txt"), 'a') as f:
                     f.write('===>' + name_classes[ind_class] + ':\tIou-' + str(round(IoUs[ind_class] * 100, 2)) +
-                  '; Recall (equal to the PA)-' + str(round(PA_Recall[ind_class] * 100, 2)) + '%; Precision-' +
-                  str(round(Precision[ind_class] * 100, 2)) + "%\n")
+                            '; Recall (equal to the PA)-' + str(
+                        round(PA_Recall[ind_class] * 100, 2)) + '%; Precision-' +
+                            str(round(Precision[ind_class] * 100, 2)) + "%\n")
 
     # -----------------------------------------------------------------#
     #   在所有验证集图像上求所有类别平均的mIoU值，计算时忽略NaN值

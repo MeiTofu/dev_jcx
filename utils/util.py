@@ -16,27 +16,43 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib import pyplot as plt
 
-CLASSES = ["_background_", "H", "T1", "T2", "T3", "T4", "T5"]
+CLASSES = ["background", "H", "T1", "T2", "T3", "T4", "T5"]
 
 CLASSES_NAME = ["H", "T1", "T2", "T3", "T4", "T5"]
 
-NAME_CLASSES = ["background", "H", "T1", "T2", "T3", "T4", "T5"]
+COLORS_CV = [
+    (0, 0, 0), (128, 0, 0), (0, 128, 0), (128, 128, 0), (0, 0, 128), (128, 0, 128), (0, 128, 128), (128, 128, 128),
+    (64, 0, 0), (192, 0, 0), (64, 128, 0), (192, 128, 0), (64, 0, 128), (192, 0, 128), (64, 128, 128), (192, 128, 128),
+    (0, 64, 0), (128, 64, 0), (0, 192, 0), (128, 192, 0), (0, 64, 128), (128, 64, 12)
+]
 
-COLORS_CV = [(0, 0, 0), (128, 0, 0), (0, 128, 0), (128, 128, 0), (0, 0, 128), (128, 0, 128), (0, 128, 128),
-             (128, 128, 128), (64, 0, 0), (192, 0, 0), (64, 128, 0), (192, 128, 0), (64, 0, 128), (192, 0, 128),
-             (64, 128, 128), (192, 128, 128), (0, 64, 0), (128, 64, 0), (0, 192, 0), (128, 192, 0), (0, 64, 128),
-             (128, 64, 12)]
-
-COLORS_PIL = [(255, 69, 0), (0, 255, 0), (255, 255, 0), (0, 0, 255), (255, 0, 255), (0, 255, 255), (255, 255, 255)]
+COLORS_PIL = [
+    (255, 0, 0), (0, 255, 0), (255, 255, 0), (0, 0, 255), (255, 0, 255), (0, 255, 255), (255, 255, 255), (127, 0, 0),
+    (192, 0, 0), (127, 255, 0), (192, 255, 0), (127, 0, 255), (192, 0, 255), (127, 255, 255), (192, 255, 255),
+    (0, 127, 0), (255, 127, 0), (0, 192, 0), (255, 192, 0), (0, 127, 255), (255, 127, 23)
+]
 
 
 def set_random_seed(seed=42):
+    """
+    训练中的随机种子，保证相同参数结果可复现
+    :param seed: 随机种子
+    :return:
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     print('You have chosen to seed training. This will slow down your training!')
+
+
+def convert_color(color_cv):
+    colors = []
+    for i, c in enumerate(color_cv):
+        colors.append(int((c / 128 * 255) if c <= 128 else c))
+
+    return colors[0], colors[1], colors[2]
 
 
 def cvtColor(image):
@@ -129,14 +145,16 @@ def draw_filled_rectangle(draw,
     :param rectangle_color: 矩形填充颜色
     :return: ImageDraw
     """
-    rectangle_coordinates = [
-        rectangle_position,
-        (rectangle_position[0] + rectangle_size, rectangle_position[1]),
-        (rectangle_position[0] + rectangle_size, rectangle_position[1] + rectangle_size // 2),
-        (rectangle_position[0], rectangle_position[1] + rectangle_size // 2),
-    ]
+    # 矩形的左上角坐标
+    x, y = rectangle_position
+    width = rectangle_size
+    height = rectangle_size
 
-    draw.polygon(rectangle_coordinates, outline=None, fill=rectangle_color)
+    # 计算矩形的右下角坐标
+    x1, y1 = x + width, y + height//2
+
+    # 绘制填充的彩色矩形
+    draw.rectangle([rectangle_position, (x1, y1)], fill=rectangle_color)
     return draw
 
 
