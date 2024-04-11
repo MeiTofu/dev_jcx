@@ -25,7 +25,7 @@ if __name__ == "__main__":
     train_percent = 0.8
 
     # VOC数据集所在的文件夹
-    VOCdevkit_path = '../data/dev_diabetes'
+    VOCdevkit_path = '../data/VOCdevkit'
     mask_image_path = 'SegmentationClass'
     imagesets_path = 'ImageSets/Segmentation'
 
@@ -44,10 +44,10 @@ if __name__ == "__main__":
             total_seg.append(seg)
 
     num = len(total_seg)
-    list = range(num)
+    num_list = range(num)
     tv = int(num * train_val_percent)
     tr = int(tv * train_percent)
-    trainval = random.sample(list, tv)
+    trainval = random.sample(num_list, tv)
     train = random.sample(trainval, tr)
 
     print("train and val size", tv)
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     ftrain = open(os.path.join(saveBasePath, 'train.txt'), 'w')
     fval = open(os.path.join(saveBasePath, 'val.txt'), 'w')
 
-    for i in list:
+    for i in num_list:
         name = total_seg[i][:-4] + '\n'
         if i in trainval:
             ftrainval.write(name)
@@ -77,16 +77,16 @@ if __name__ == "__main__":
     print("Check datasets format, this may take a while.")
     print("检查数据集格式是否符合要求，这可能需要一段时间。")
     classes_nums = np.zeros([256], np.int32)
-    for i in tqdm(list):
+    for i in tqdm(num_list):
         name = total_seg[i]
         png_file_name = os.path.join(segfilepath, name)
         if not os.path.exists(png_file_name):
-            raise ValueError("未检测到标签图片 %s，请查看具体路径下文件是否存在以及后缀是否为png。" % (png_file_name))
+            raise ValueError("未检测到标签图片 %s，请查看具体路径下文件是否存在以及后缀是否为png。" % png_file_name)
 
         png = np.array(Image.open(png_file_name), np.uint8)
         if len(np.shape(png)) > 2:
             print("标签图片%s的shape为%s，不属于灰度图或者八位彩图，请仔细检查数据集格式。" % (name, str(np.shape(png))))
-            print("标签图片需要为灰度图或者八位彩图，标签的每个像素点的值就是这个像素点所属的种类。" % (name, str(np.shape(png))))
+            print("标签图片需要为灰度图或者八位彩图，标签的每个像素点的值就是这个像素点所属的种类。")
 
         classes_nums += np.bincount(np.reshape(png, [-1]), minlength=256)
 

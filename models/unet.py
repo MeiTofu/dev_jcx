@@ -14,7 +14,7 @@ from models.vgg import VGG16
 
 
 class Unet(nn.Module):
-    def __init__(self, backbone_type, num_classes, pretrained=False):
+    def __init__(self, backbone_type="resnet50", num_classes=7, pretrained=False, head_up="unetUp"):
         super(Unet, self).__init__()
         self.backbone_type = backbone_type
         self.num_classes = num_classes
@@ -24,10 +24,9 @@ class Unet(nn.Module):
         elif backbone_type == "resnet50":
             self.backbone = resnet50(pretrained=pretrained)
 
-        self.head = Head(backbone_type=backbone_type, num_classes=num_classes)
+        self.head = Head(backbone_type=backbone_type, num_classes=num_classes, head_up=head_up)
 
-        if not pretrained:
-            self._initialize_weights()
+        self._initialize_weights()
 
     def _initialize_weights(self):
         for m in self.modules():
@@ -49,7 +48,7 @@ class Unet(nn.Module):
 if __name__ == "__main__":
     print("dev unet")
 
-    model = Unet(backbone_type="resnet50", num_classes=8, pretrained=False)
+    model = Unet(backbone_type="resnet50", num_classes=7, pretrained=False)
     print(model)
 
     input_data = torch.randn((1, 3, 512, 512))
