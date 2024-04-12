@@ -151,7 +151,7 @@ def draw_filled_rectangle(draw,
     height = rectangle_size
 
     # 计算矩形的右下角坐标
-    x1, y1 = x + width, y + height//2
+    x1, y1 = x + width * 1.5, y + height
 
     # 绘制填充的彩色矩形
     draw.rectangle([rectangle_position, (x1, y1)], fill=rectangle_color)
@@ -159,7 +159,7 @@ def draw_filled_rectangle(draw,
 
 
 def add_info_to_image(image,
-                      scale_factor: int = 20,
+                      scale_factor: int = 23,
                       font_color: tuple = (0, 0, 0),
                       colors=None,
                       name_classes=None):
@@ -178,24 +178,26 @@ def add_info_to_image(image,
         name_classes = CLASSES_NAME
 
     w, h = image.size
-    unit = w // scale_factor
-    distance = (w - unit * 2) // len(name_classes)
+    min_size = min(w, h)
+    unit = min_size // scale_factor
+    # distance = (h - unit * 2) // len(name_classes)
+    distance = unit
     # 自适应字体大小
-    font_size = unit
+    font_size = unit // 1.2
     # 字体位置：底部
-    x, y = (unit, h - font_size)
+    x, y = (unit//3, unit)
     draw = ImageDraw.Draw(image)
 
-    font = ImageFont.truetype("utils/arial.ttf", size=font_size)
+    font = ImageFont.truetype(font="utils/arial.ttf", size=font_size, index=0)
 
     for i in range(len(name_classes)):
-        text = name_classes[i]
-        position = (x, y - unit)
-        position_text = (x, y)
+        text = " " + name_classes[i]
+        position = (x, y)
+        position_text = (x + unit * 1.5 + 4, y + unit//8)
         rectangle_size = unit
         draw = draw_filled_rectangle(draw, position, rectangle_size, rectangle_color=colors[i])
         draw.text(position_text, text, font=font, fill=font_color)
-        x = x + distance
+        y = y + distance + 4
 
     return image
 

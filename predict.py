@@ -64,12 +64,13 @@ def show_segmentation_results(origi_img, prs, total_classes, label_info=True):
 if __name__ == "__main__":
     print("predict")
     parser = argparse.ArgumentParser(description='Unet Predict Info')
-    parser.add_argument('--image_path', default='data/voc_dev/JPEGImages/T2_00048.jpg', help='需要预测的文件路径')
+    parser.add_argument('--image_path', default='data/diabetic_orig/T4_00208.jpg', help='需要预测的文件路径')
     parser.add_argument('--device', default='cuda:0', help='推理设备')
     parser.add_argument('--input_size', default=(512, 512), help='the model input image size')
     parser.add_argument('--backbone_type', type=str, default="resnet50", help='选择主干网络')
     parser.add_argument('--num_classes', type=int, default=7, help='目标类别数，对应网络的输出特征通道数')
     parser.add_argument('--weight_path', default="weight/init_unet.pth", help='加载训练好的模型权重')
+    parser.add_argument('--save', default="output", help='预测结果保存路径')
     args = parser.parse_args()
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
@@ -115,6 +116,6 @@ if __name__ == "__main__":
         # 显示分割结果
         image = show_segmentation_results(origi_img=old_img, prs=pr, total_classes=args.num_classes)
 
-        image.save(os.path.join('output', 'pred_' + basename))
+        image.save(os.path.join(args.save, 'pred_' + basename))
 
     print(args.image_path)

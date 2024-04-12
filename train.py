@@ -9,18 +9,16 @@ import argparse
 import os.path
 import time
 
-from PIL import Image
 from tqdm import tqdm
 import numpy as np
 import torch
-from torch import nn
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 
 from models.unet import Unet
 from utils.dataloader import UDataset, unet_dataset_collate
 from utils.loss import Focal_Loss, CE_Loss, Dice_loss
-from utils.util import generate_dir, CLASSES, set_random_seed, save_info_when_training
+from utils.util import generate_dir, set_random_seed, save_info_when_training
 from utils.util_eval import Evaluator
 from utils.util_metrics import calculate_score
 
@@ -79,13 +77,14 @@ def run():
         f.writelines('------------------ start ------------------' + '\n')
         for eachArg, value in argsDict.items():
             f.writelines(eachArg + ' : ' + str(value) + '\n')
-        f.writelines('------------------- success -------------------')
+        f.writelines('------------------- end-------------------')
 
     # 定义评估器
     evaluator = Evaluator(args.input_size, args.num_classes, device, image_lines=val_lines,
                           dataset_path=args.dataset_path, log_dir=save_dir, total_epoch=args.epoch)
 
     loss_list, val_loss_list, val_f_score_list, lr_list = [], [], [], []
+    best_epoch = 0
 
     # 训练模型
     start_time = time.time()
@@ -105,7 +104,7 @@ def run():
                 model.eval()  # set evaluate model
 
             running_loss = 0.0
-            running_score = 0.0
+            running_dice = 0.0
             running_mIoU = 0.0
             bs = 0
             for batch in tqdm(dataloader[phase], desc=phase + ' Data Processing Progress'):
@@ -138,14 +137,14 @@ def run():
                         optimizer.step()
                     else:
                         dice_coefficient, mIoU, precision, recall = calculate_score(outputs, labels)
-                        running_score += dice_coefficient
+                        running_dice += dice_coefficient
                         running_mIoU += mIoU
 
                 # statistics loss
                 running_loss += loss.item()
 
             epoch_loss = running_loss / (dataset_sizes[phase] / bs)
-            epoch_score = running_score / (dataset_sizes[phase] / bs)
+            epoch_dice = running_dice / (dataset_sizes[phase] / bs)
             epoch_mIoU = running_mIoU / (dataset_sizes[phase] / bs)
 
             # save data / learning rate regulator
@@ -155,24 +154,25 @@ def run():
                 print('{} Loss:{:.8f} '.format(phase, epoch_loss))
             else:
                 # 计算当前 epoch 的 precise mIoU
-                epoch_acc = evaluator.on_epoch_end(epoch, model_eval=model, classes_eval=CLASSES, draw_info=False)
+                # epoch_acc = evaluator.on_epoch_end(epoch, model_eval=model, classes_eval=CLASSES, draw_info=False)
                 val_loss_list.append(epoch_loss)
-                val_f_score_list.append(epoch_score)
-                print('{} Loss:{:.8f} dice:{:.4f} mIou:{:.4f}'.format(phase, epoch_loss, epoch_score, epoch_mIoU))
+                val_f_score_list.append(epoch_dice)
+                print('{} Loss:{:.8f} dice:{:.4f} mIou:{:.4f}'.format(phase, epoch_loss, epoch_dice, epoch_mIoU))
                 print("最后一个batch的指标：precision:", precision, "\trecall:", recall)
-                if args.best_acc < epoch_acc:
-                    args.best_acc = epoch_acc
+                if args.best_acc <= epoch_dice:
+                    args.best_acc = epoch_dice
+                    best_epoch = epoch
                     torch.save(model.state_dict(), os.path.join(save_dir, 'best_model_weight.pth'))
 
             with open(train_log_file, 'a', encoding='utf8') as f:
                 if phase == 'train':
                     f.write('\n' + '-' * 42 + '\n')
                 f.write('Epoch {}/{},\tphase:{}\ncurrent_lr:{:.6f},\tloss:{:.6f},\tdice:{:.4f},\tmIoU:{:.4f}\n'
-                        .format(epoch, args.epoch - 1, phase, current_lr, epoch_loss, epoch_score, epoch_mIoU))
+                        .format(epoch, args.epoch - 1, phase, current_lr, epoch_loss, epoch_dice, epoch_mIoU))
 
             # save weight
             if phase == 'val' and epoch == args.epoch - 1:
-                torch.save(model.state_dict(), os.path.join(save_dir, 'last_loss_{:.4f}.pth'.format(epoch_loss)))
+                torch.save(model.state_dict(), os.path.join(save_dir, 'last_loss{:.4f}_dice{:.4f}.pth'.format(epoch_loss, epoch_dice)))
                 save_info_when_training(loss_list, val_loss_list, val_f_score_list, lr_list, save_dir)
 
     time_spend = time.time() - start_time
@@ -180,6 +180,7 @@ def run():
     print('\nThe total time spent training the model is {:.0f}h{:.0f}m{:.0f}s.'.format(
         time_spend // 3600, time_spend % 3600 // 60, time_spend % 60))
     with open(train_log_file, 'a', encoding='utf8') as f:
+        f.write('\nThe save best weight epoch {}.'.format(best_epoch))
         f.write('\nThe total time spent training the model is {:.0f}h{:.0f}m{:.0f}s.'.format(
             time_spend // 3600, time_spend % 3600 // 60, time_spend % 60))
 
@@ -187,57 +188,53 @@ def run():
 if __name__ == '__main__':
     print("train")
     parser = argparse.ArgumentParser(description='Unet Train Info')
-    parser.add_argument('--info', default=['TODO'],
+    parser.add_argument('--info', default=['dev'],
                         help='模型修改备注信息')
-    parser.add_argument('--save_path', default='run',
+    parser.add_argument('--save_path', default='../experiment/train_dev',
                         help='训练信息保存路径')
     parser.add_argument('--seed', default=42,
                         help='random seed')
-    parser.add_argument('--device', default='cuda:0',
+    parser.add_argument('--device', default='cuda:1',
                         help='device')
     parser.add_argument('--input_size', default=(512, 512),
                         help='the model input image size')
     parser.add_argument('--best_acc', default=0.5,
                         help='best_acc.')
-
-    # 网络结构参数
+    # ======================= 网络结构参数=============================
     parser.add_argument('--backbone_type', type=str, default="resnet50",
                         help='选择主干网络')
     parser.add_argument('--num_classes', type=int, default=7,
                         help='目标类别数，对应网络的输出特征通道数')
     parser.add_argument('--pretrain_backbone', type=bool, default=False,
                         help='主干网络是否加载预训练权重')
-    parser.add_argument('--weight_path', default="weight/init_unet.pth",
+    parser.add_argument('--weight_path', default="weight/resnet50-19c8e357.pth",
                         help='pre-training model load path.')
     parser.add_argument('--head_up', type=str, default="unetUp",
                         help='选择头网络的多尺度特征融合方式')
-
-    # 加载数据相关参数
-    parser.add_argument('--dataset_path', type=str, default="data/voc_dev",
+    # ======================= 加载数据相关参数=============================
+    parser.add_argument('--dataset_path', type=str, default="../dataset/diabetic_dev",
                         help='数据集路径')
-    parser.add_argument('--train_txt_path', type=str, default="data/voc_dev/ImageSets/Segmentation/val.txt",
+    parser.add_argument('--train_txt_path', type=str, default="ImageSets/Segmentation/val.txt",
                         help='train 划分的 txt 文件路径')
-    parser.add_argument('--val_txt_path', type=str, default="data/voc_dev/ImageSets/Segmentation/val.txt",
+    parser.add_argument('--val_txt_path', type=str, default="ImageSets/Segmentation/val.txt",
                         help='val 划分的 txt 文件路径')
-
-    # 训练参数
-    parser.add_argument('--epoch', type=int, default=5,
+    # ======================= 训练参数=============================
+    parser.add_argument('--epoch', type=int, default=10,
                         help='number of epochs for training')
     parser.add_argument('--period', type=int, default=20,
                         help='Evaluated every interval epoch')
-    parser.add_argument('--batch_size', default=6,
+    parser.add_argument('--batch_size', default=16,
                         help='batch size when training.')
     parser.add_argument('--num_workers', default=8,
                         help='load data num_workers when training.')
     parser.add_argument('--init_lr', default=0.0005, type=float,
                         help='初始学习率，0.0005 是训练的默认值')
-
-    # 损失函数相关参数
+    # ======================= 损失函数相关参数=============================
     parser.add_argument('--focal_loss', default=False, type=bool,
                         help='是否使用 Focal Loss 以防止正负样本不平衡，若不选择则默认使用 CE Loss')
     parser.add_argument('--dice_loss', default=True, type=bool,
                         help='是否使用 Dice Loss 根据label额外计算损失，使用后效果更好')
-    # 优化器相关参数
+    # ======================= 优化器相关参数=============================
     parser.add_argument('--optimizer_type', default='Adam', type=str,
                         help='选择使用的优化器，可选(Adam, AdamW, SGD)')
     parser.add_argument('--weight_decay', default=1e-4, type=float,
@@ -258,7 +255,7 @@ if __name__ == '__main__':
     # 选择训练模型使用的设备
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()))
-    print(torch.cuda.get_device_name(device))
+    print("Inference device: ", torch.cuda.get_device_name(device))
 
     # 实例化模型
     model = Unet(backbone_type=args.backbone_type, num_classes=args.num_classes, pretrained=args.pretrain_backbone,
@@ -266,13 +263,13 @@ if __name__ == '__main__':
     model.to(device)
     if args.weight_path is not None:
         model.load_state_dict(torch.load(args.weight_path, map_location=lambda storage, loc: storage), strict=False)
-        print("已加载预训练权重：{}".format(args.weight_path))
+        print("Model weights loaded：{}".format(args.weight_path))
 
     # 加载数据集
     # 读取数据集对应的txt
-    with open(os.path.join(args.train_txt_path), "r") as f:
+    with open(os.path.join(args.dataset_path, args.train_txt_path), "r") as f:
         train_lines = f.readlines()
-    with open(os.path.join(args.val_txt_path), "r") as f:
+    with open(os.path.join(args.dataset_path, args.val_txt_path), "r") as f:
         val_lines = f.readlines()
 
     dataset = {'train': UDataset(train_lines, num_classes=args.num_classes, train=True, dataset_path=args.dataset_path),
