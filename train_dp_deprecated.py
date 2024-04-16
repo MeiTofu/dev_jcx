@@ -9,12 +9,19 @@ import argparse
 import os.path
 import time
 
-from torch.backends import cudnn
+from torch import nn
+import torch.backends.cudnn as cudnn
 from tqdm import tqdm
 import numpy as np
 import torch
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
+
+import torch.multiprocessing as mp
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.distributed import init_process_group, destroy_process_group
+import os
 
 from models.unet import Unet
 from utils.dataloader import UDataset, unet_dataset_collate
@@ -22,6 +29,18 @@ from utils.loss import Focal_Loss, CE_Loss, Dice_loss
 from utils.util import generate_dir, set_random_seed, save_info_when_training
 from utils.util_eval import Evaluator
 from utils.util_metrics import calculate_score
+
+
+# def ddp_setup(rank, world_size):
+#     """
+#     Args:
+#         rank: Unique identifier of each process
+#         world_size: Total number of processes
+#     """
+#     os.environ["MASTER_ADDR"] = "localhost"
+#     os.environ["MASTER_PORT"] = "12355"
+#     init_process_group(backend="nccl", rank=rank, world_size=world_size)
+#     torch.cuda.set_device(rank)
 
 
 def run():
@@ -36,7 +55,7 @@ def run():
                           collate_fn=unet_dataset_collate, pin_memory=True)}
     dataset_sizes = {x: len(dataset[x]) for x in ['train', 'val']}
 
-    print("Dataset statistical results：")
+    print("Dataset statistical results")
     print('training dataset loaded with length : {}'.format(len(dataset['train'])))
     print('validation dataset loaded with length : {}'.format(len(dataset['val'])))
 
@@ -78,11 +97,7 @@ def run():
         f.writelines('------------------ start ------------------' + '\n')
         for eachArg, value in argsDict.items():
             f.writelines(eachArg + ' : ' + str(value) + '\n')
-        f.writelines('------------------- end-------------------')
-
-    # # 定义评估器
-    # evaluator = Evaluator(args.input_size, args.num_classes, device, image_lines=val_lines,
-    #                       dataset_path=args.dataset_path, log_dir=save_dir, total_epoch=args.epoch)
+        f.writelines('------------------- ok-------------------')
 
     loss_list, val_loss_list, val_f_score_list, lr_list = [], [], [], []
     best_epoch = 0
@@ -110,9 +125,10 @@ def run():
             bs = 0
             for batch in tqdm(dataloader[phase], desc=phase + ' Data Processing Progress'):
                 imgs, pngs, labels = batch
-                imgs = imgs.to(device)
-                pngs = pngs.to(device)
-                labels = labels.to(device)
+                if torch.cuda.is_available():
+                    imgs = imgs.cuda()
+                    pngs = pngs.cuda()
+                    labels = labels.cuda()
                 bs = imgs.size()[0]
 
                 # clear gradient
@@ -120,7 +136,7 @@ def run():
 
                 # forward propagation, track history if only train
                 with torch.set_grad_enabled(phase == 'train'):
-                    weights = torch.from_numpy(cls_weights).to(device)
+                    weights = torch.from_numpy(cls_weights).cuda()
                     outputs = model(imgs)
                     # 计算损失 默认使用 CE Loss + Dice Loss 组合
                     if args.focal_loss:
@@ -142,7 +158,7 @@ def run():
                         running_mIoU += mIoU
 
                 # statistics loss
-                running_loss += loss.item()
+                running_loss += loss.mean().item()
 
             epoch_loss = running_loss / (dataset_sizes[phase] / bs)
             epoch_dice = running_dice / (dataset_sizes[phase] / bs)
@@ -187,7 +203,7 @@ def run():
 
 
 if __name__ == '__main__':
-    print("train")
+    print("train_dp")
     parser = argparse.ArgumentParser(description='Unet Train Info')
     parser.add_argument('--info', default=['dev'],
                         help='模型修改备注信息')
@@ -195,8 +211,6 @@ if __name__ == '__main__':
                         help='训练信息保存路径')
     parser.add_argument('--seed', default=42,
                         help='random seed')
-    parser.add_argument('--device', default='cuda:1',
-                        help='device')
     parser.add_argument('--input_size', default=(512, 512),
                         help='the model input image size')
     parser.add_argument('--best_acc', default=0.5,
@@ -220,12 +234,10 @@ if __name__ == '__main__':
     parser.add_argument('--val_txt_path', type=str, default="ImageSets/Segmentation/val.txt",
                         help='val 划分的 txt 文件路径')
     # ======================= 训练参数=============================
-    parser.add_argument('--epoch', type=int, default=4,
+    parser.add_argument('--epoch', type=int, default=10,
                         help='number of epochs for training')
-    parser.add_argument('--period', type=int, default=20,
-                        help='Evaluated every interval epoch')
-    parser.add_argument('--batch_size', default=16,
-                        help='batch size when training.')
+    parser.add_argument('--batch_size', default=64,
+                        help='batch size when training. JDFU数据集单卡只能16 dp=64')
     parser.add_argument('--num_workers', default=32,
                         help='load data num_workers when training.')
     parser.add_argument('--init_lr', default=0.0005, type=float,
@@ -254,19 +266,25 @@ if __name__ == '__main__':
     # 设置随机种子，保证结果的可复现
     set_random_seed(args.seed)
     # 选择训练模型使用的设备
-    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()))
-    print("Inference device: ", torch.cuda.get_device_name(device))
+    # print("Inference device: ", torch.cuda.get_device_name(device))
 
     # 实例化模型
     model = Unet(backbone_type=args.backbone_type, num_classes=args.num_classes, pretrained=args.pretrain_backbone,
                  head_up=args.head_up)
-    model.to(device)
-    # 能提速？
-    # cudnn.benchmark = True
+
     if args.weight_path is not None:
         model.load_state_dict(torch.load(args.weight_path, map_location=lambda storage, loc: storage), strict=False)
         print("Model weights loaded：{}".format(args.weight_path))
+
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # 单机多卡训练DP版本
+    print("Let's use", torch.cuda.device_count(), "GPUs!")
+    gpus = [0, 1, 2, 3]
+    torch.cuda.set_device('cuda:{}'.format(gpus[0]))
+
+    model = nn.DataParallel(model.cuda(), device_ids=gpus, output_device=gpus[0])
+    cudnn.benchmark = True
 
     # 加载数据集
     # 读取数据集对应的txt
