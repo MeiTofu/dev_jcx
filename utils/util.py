@@ -209,35 +209,46 @@ def add_info_to_image(image,
     return image
 
 
-def save_info_when_training(train_loss, val_loss, val_acc, lr_list, save_path='', save=True):
+def save_info_when_training(train_loss, val_loss, lr_list, save_path='', save=True):
     X = range(0, len(train_loss))
     y_train = train_loss
-    plt.figure(figsize=(12, 7), dpi=200)
-    plt.subplot(1, 3, 1)
-    plt.plot(X, lr_list, 'y.-', label='lr')
+    plt.figure(figsize=(9, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(X, lr_list, color='green', linestyle='-', marker='.', label='lr')
     plt.title('lr vs epochs item')
-    plt.ylabel('lr')
+    plt.ylabel('Lr')
+    plt.xlabel('Epochs')
+    plt.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+    plt.legend()
+    plt.grid(True)
 
     x_loss = range(0, len(val_loss))
-    plt.subplot(1, 3, 2)
-    plt.plot(x_loss, y_train, 'b.-', label='train')
+    plt.subplot(1, 2, 2)
+    plt.plot(x_loss, y_train, 'red', linestyle='-', marker='.', label='train')
     plt.title('train/val loss vs epochs item')
-    plt.ylabel('train/val loss')
+    plt.ylabel('Loss')
+    plt.xlabel('Epochs')
     y_val = val_loss
-    plt.plot(X, y_val, 'r.-', label='val')
+    plt.plot(X, y_val, 'SteelBlue', linestyle='-', marker='.', label='val')
     plt.legend()
+    plt.grid(True)
 
-    x_acc = range(0, len(val_acc))
-    plt.subplot(1, 3, 3)
-    plt.plot(x_acc, val_acc, 'g.-', label='val')
-    plt.title('val f_score vs epochs item')
-    plt.ylabel('val f_score')
-
+    # x_acc = range(0, len(val_acc))
+    # plt.subplot(1, 3, 3)
+    # plt.plot(x_acc, val_acc, 'g.-', label='val')
+    # plt.title('val f_score vs epochs item')
+    # plt.ylabel('val f_score')
+    # plt.grid(True)
+    # # 设置 Y 轴范围从 0 到最大值
+    # max_value = max(val_acc) * 1.1
+    # plt.ylim(0, max_value)
     plt.tight_layout()
     if save:
-        plt.savefig(save_path + '/train_info.png')
+        plt.savefig(save_path + '/epoch_loss.png')
     else:
         plt.show()
+    plt.cla()
+    plt.close("all")
 
 
 def set_optimizer_lr(optimizer, current_epoch, max_epochs, warmup_epochs=10, max_lr=0.1, min_lr=0.000001, lr_type="warmup_cosine"):

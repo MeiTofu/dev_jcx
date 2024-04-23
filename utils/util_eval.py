@@ -21,7 +21,7 @@ from utils.util_metrics import compute_mIoU
 
 
 class Evaluator(object):
-    def __init__(self, input_shape, num_classes, device, image_lines, dataset_path, log_dir, total_epoch: int,
+    def __init__(self, input_shape, num_classes, device, image_txt_path, dataset_path, log_dir, total_epoch: int,
                  eval_flag=True,
                  miou_out_path=".temp_miou_out"):
         super(Evaluator, self).__init__()
@@ -37,9 +37,14 @@ class Evaluator(object):
         self.total_epoch = total_epoch
         self.epoch_list = generate_save_epoch(total_epoch)
 
+        with open(os.path.join(dataset_path, image_txt_path), "r") as f:
+            image_lines = f.readlines()
+
         self.image_ids = [image_id.split()[0] for image_id in image_lines]
         self.mious = [0]
-        self.epoches = [0]
+        self.epochs = [0]
+        self.mPrecision = [0]
+        self.mRecall = [0]
         if self.eval_flag:
             with open(os.path.join(self.log_dir, "epoch_mIoU.txt"), 'a') as f:
                 f.write(str(0))
@@ -125,7 +130,9 @@ class Evaluator(object):
             mIoU = temp_miou
 
             self.mious.append(temp_miou)
-            self.epoches.append(epoch)
+            self.mPrecision.append(temp_mPrecision)
+            self.mRecall.append(temp_mPA)
+            self.epochs.append(epoch)
 
             with open(os.path.join(self.log_dir, "epoch_mIoU.txt"), 'a') as f:
                 f.write("epoch: {}, \tmIoU: {}, \tmPA_Recall:{}%, \tmPrecision:{}%\n\n"
@@ -133,17 +140,18 @@ class Evaluator(object):
 
             if draw_info:
                 plt.figure()
-                plt.plot(self.epoches, self.mious, 'red', linewidth=2, label='train mIoU')
+                plt.plot(self.epochs, self.mious, 'MediumPurple', marker='^', linestyle='-', label='mIoU', zorder=3)
+                plt.plot(self.epochs, self.mPrecision, '#FF6A6A', marker='*', linestyle='-', label='mPrecision', zorder=2)
+                plt.plot(self.epochs, self.mRecall, '#C1CDC1', marker='.', linestyle='-', label='mRecall', zorder=1)
 
                 plt.grid(True)
-                plt.xlabel('Epoch')
-                plt.ylabel('mIoU')
-                plt.title('A mIoU Curve')
-                plt.legend(loc="upper right")
-
+                plt.xlabel('Epochs')
+                plt.ylabel('Metrics')
+                plt.title('Metrics Curve')
+                plt.legend()
                 plt.savefig(os.path.join(self.log_dir, "epoch_mIoU.png"))
-                # plt.cla()
-                # plt.close("all")
+                plt.cla()
+                plt.close("all")
 
             print("Get mIoU done.")
             shutil.rmtree(self.miou_out_path)
