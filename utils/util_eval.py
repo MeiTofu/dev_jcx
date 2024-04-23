@@ -21,7 +21,8 @@ from utils.util_metrics import compute_mIoU
 
 
 class Evaluator(object):
-    def __init__(self, input_shape, num_classes, device, image_lines, dataset_path, log_dir, total_epoch: int, eval_flag=True,
+    def __init__(self, input_shape, num_classes, device, image_lines, dataset_path, log_dir, total_epoch: int,
+                 eval_flag=True,
                  miou_out_path=".temp_miou_out"):
         super(Evaluator, self).__init__()
 
@@ -92,7 +93,7 @@ class Evaluator(object):
         return image
 
     def on_epoch_end(self, epoch, model_eval, classes_eval=None, draw_info=True):
-        ACC = 0.0
+        mIoU = 0.0
         if ((epoch in self.epoch_list) or epoch == self.total_epoch - 1) and self.eval_flag:
             self.net = model_eval
             gt_dir = os.path.join(self.dataset_path, "SegmentationClass/")
@@ -116,16 +117,19 @@ class Evaluator(object):
 
             print("Calculate mIoU.")
             # 执行计算mIoU的函数
-            _, IoUs, PA_Recall, Precision, Accuracy = compute_mIoU(gt_dir, pred_dir, self.image_ids, self.num_classes,
-                                                                   classes_eval, save_info=self.log_dir)
+            _, IoUs, PA_Recall, Precision = compute_mIoU(gt_dir, pred_dir, self.image_ids, self.num_classes,
+                                                         classes_eval, save_info=self.log_dir)
             temp_miou = np.nanmean(IoUs) * 100
-            ACC = Accuracy
+            temp_mPrecision = round(np.nanmean(Precision) * 100, 2)
+            temp_mPA = round(np.nanmean(PA_Recall) * 100, 2)
+            mIoU = temp_miou
 
             self.mious.append(temp_miou)
             self.epoches.append(epoch)
 
             with open(os.path.join(self.log_dir, "epoch_mIoU.txt"), 'a') as f:
-                f.write("epoch: {}, \tmIoU: {}, \tAccuracy:{}%\n\n".format(epoch, str(temp_miou), Accuracy))
+                f.write("epoch: {}, \tmIoU: {}, \tmPA_Recall:{}%, \tmPrecision:{}%\n\n"
+                        .format(epoch, str(temp_miou), str(temp_mPA), str(temp_mPrecision)))
 
             if draw_info:
                 plt.figure()
@@ -143,5 +147,5 @@ class Evaluator(object):
 
             print("Get mIoU done.")
             shutil.rmtree(self.miou_out_path)
-        # 返回当前 epoch的准确率
-        return ACC
+        # 返回当前 epoch的mIoU
+        return mIoU

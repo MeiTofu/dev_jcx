@@ -5,20 +5,25 @@
 @Create: 2024/3/23 19:39
 @Message: null
 """
+import math
 import os
 import random
-
 import numpy as np
 
-# CLASSES = ["_background_","aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow",
-#            "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
 import torch
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib import pyplot as plt
 
-CLASSES = ["background", "H", "T1", "T2", "T3", "T4", "T5"]
+# CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow",
+#            "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
+# CLASSES_NAME = ["aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
+#                 "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
 
-CLASSES_NAME = ["H", "T1", "T2", "T3", "T4", "T5"]
+# CLASSES = ["background", "H", "T1", "T2", "T3", "T4", "T5"]
+# CLASSES_NAME = ["H", "T1", "T2", "T3", "T4", "T5"]
+
+CLASSES = ["background", "H", "T1", "T2"]
+CLASSES_NAME = ["H", "T1", "T2"]
 
 COLORS_CV = [
     (0, 0, 0), (128, 0, 0), (0, 128, 0), (128, 128, 0), (0, 0, 128), (128, 0, 128), (0, 128, 128), (128, 128, 128),
@@ -43,7 +48,9 @@ def set_random_seed(seed=42):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
+    # torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
     print('You have chosen to seed training. This will slow down your training!')
 
 
@@ -231,3 +238,18 @@ def save_info_when_training(train_loss, val_loss, val_acc, lr_list, save_path=''
         plt.savefig(save_path + '/train_info.png')
     else:
         plt.show()
+
+
+def set_optimizer_lr(optimizer, current_epoch, max_epochs, warmup_epochs=10, max_lr=0.1, min_lr=0.000001, lr_type="warmup_cosine"):
+    if lr_type == "warmup_cosine":
+        if current_epoch < warmup_epochs:
+            lr = max_lr * current_epoch / warmup_epochs + min_lr
+        else:
+            lr = min_lr + (max_lr - min_lr) * (
+                        1 + math.cos(math.pi * (current_epoch - warmup_epochs) / (max_epochs - warmup_epochs))) / 2
+    else:
+        raise ValueError("Unsupported lr type for {}".format(lr_type))
+
+    # 基于计算出的学习率进行赋值
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = lr
