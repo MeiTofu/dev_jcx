@@ -242,9 +242,30 @@ def save_info_when_training(train_loss, val_loss, lr_list, save_path='', save=Tr
     # # 设置 Y 轴范围从 0 到最大值
     # max_value = max(val_acc) * 1.1
     # plt.ylim(0, max_value)
+
     plt.tight_layout()
     if save:
-        plt.savefig(save_path + '/epoch_loss.png')
+        plt.savefig(os.path.join(save_path, 'epoch_loss.png'))
+    else:
+        plt.show()
+    plt.cla()
+    plt.close("all")
+
+
+def save_dice_when_training(train_dice, val_dice, save_path='', save=True):
+    plt.figure()
+    x_dice = range(0, len(train_dice))
+    plt.plot(x_dice, train_dice, 'MediumPurple', marker='.', linestyle='-', label='train dice')
+    plt.plot(x_dice, val_dice, '#FF6A6A', marker='.', linestyle='-', label='val dice')
+
+    plt.grid(True)
+    plt.xlabel('Epochs')
+    plt.ylabel('Metrics')
+    plt.title('Metrics Curve')
+    plt.legend()
+
+    if save:
+        plt.savefig(os.path.join(save_path, "epoch_dice.png"))
     else:
         plt.show()
     plt.cla()

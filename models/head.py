@@ -8,96 +8,9 @@
 import torch
 from torch import nn
 
-from models.basic import SubPixelConvolutionalBlock, SeparableConv2d
+from models.awesome import AdjustmentBlock, get_head
 from models.resnet import resnet50
-
-
-class unetUp(nn.Module):
-    def __init__(self, in_size, out_size):
-        super(unetUp, self).__init__()
-        self.conv1 = nn.Conv2d(in_size, out_size, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, padding=1)
-        self.up = nn.UpsamplingBilinear2d(scale_factor=2)
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, inputs1, inputs2):    # (1,1024,32,32) (1,2048,16,16)
-        outputs = torch.cat([inputs1, self.up(inputs2)], 1)     # (1,3072, 32,32)
-        outputs = self.conv1(outputs)   # (1,512,32,32)
-        outputs = self.relu(outputs)    # (1,512,32,32)
-        outputs = self.conv2(outputs)   # (1,512,32,32)
-        outputs = self.relu(outputs)    # (1,512,32,32)
-        return outputs  # (1,512,32,32)
-
-
-class JUp(nn.Module):
-    def __init__(self, in_size, out_size, up_channels=2048):
-        super(JUp, self).__init__()
-        self.conv1 = nn.Conv2d(in_size, out_size, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, padding=1)
-        self.subpixel_convolutional_blocks = SubPixelConvolutionalBlock(kernel_size=3, n_channels=up_channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.separableConv2d = SeparableConv2d(in_channels=in_size, out_channels=out_size)
-
-    def forward(self, inputs1, inputs2):    # (1,1024,32,32) (1,2048,16,16)
-        outputs2 = self.subpixel_convolutional_blocks(inputs2)
-        outputs = torch.cat([inputs1, outputs2], 1)     # 1536    # (1,3072, 32,32)
-        outputs = self.conv1(outputs)   # (1,512,32,32)
-        outputs = self.relu(outputs)    # (1,512,32,32)
-        outputs = self.conv2(outputs)   # (1,512,32,32)
-        outputs = self.relu(outputs)    # (1,512,32,32)
-        return outputs  # (1,512,32,32)
-
-
-class JUp_Add(nn.Module):
-    def __init__(self, in_size, out_size, up_channels=2048):
-        super(JUp_Add, self).__init__()
-        self.conv1 = nn.Conv2d(in_size, out_size, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, padding=1)
-        self.subpixel_convolutional_blocks = SubPixelConvolutionalBlock(kernel_size=3, n_channels=up_channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.separableConv2d = SeparableConv2d(in_channels=in_size, out_channels=out_size)
-
-    def forward(self, inputs1, inputs2):    # (1,1024,32,32) (1,2048,16,16)
-        outputs2 = self.subpixel_convolutional_blocks(inputs2)
-        outputs = torch.cat([inputs1, outputs2], 1)     # 1536    # (1,3072, 32,32)
-
-        # 残差连接
-        residual = outputs
-        residual = self.separableConv2d(residual)
-        outputs = self.conv1(outputs)   # (1,512,32,32)
-        outputs = self.relu(outputs)    # (1,512,32,32)
-        outputs = self.conv2(outputs)   # (1,512,32,32)
-        outputs = self.relu(outputs)    # (1,512,32,32)
-        outputs = outputs + residual
-        return outputs  # (1,512,32,32)
-
-
-class JUp_Concat(nn.Module):
-    def __init__(self, in_size, out_size, up_channels=2048, repair_channel=1024):
-        super(JUp_Concat, self).__init__()
-        self.conv1 = nn.Conv2d(in_size, out_size, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(out_size, out_size, kernel_size=3, padding=1)
-        self.subpixel_convolutional_blocks = SubPixelConvolutionalBlock(kernel_size=3, n_channels=up_channels)
-        self.relu = nn.ReLU(inplace=True)
-        self.separableConv2d = SeparableConv2d(in_channels=in_size, out_channels=out_size)
-        self.separableConv2d2 = SeparableConv2d(in_channels=repair_channel, out_channels=out_size)
-
-    def forward(self, inputs1, inputs2):    # (1,1024,32,32) (1,2048,16,16)
-        outputs2 = self.subpixel_convolutional_blocks(inputs2)
-        outputs = torch.cat([inputs1, outputs2], 1)     # 1536    # (1,3072, 32,32)
-
-        # 残差连接
-        residual = outputs
-        residual = self.separableConv2d(residual)
-
-        outputs = self.conv1(outputs)   # (1,512,32,32)
-        outputs = self.relu(outputs)    # (1,512,32,32)
-        outputs = self.conv2(outputs)   # (1,512,32,32)
-        outputs = self.relu(outputs)    # (1,512,32,32)
-        # outputs = outputs + residual
-        outputs = torch.cat([outputs, residual], dim=1)
-        outputs = self.separableConv2d2(outputs)
-        return outputs  # (1,512,32,32)
+from models.unet_base import UnetEncoder
 
 
 class Head(nn.Module):
@@ -109,86 +22,75 @@ class Head(nn.Module):
 
         self.backbone_type = backbone_type
         self.num_classes = num_classes
-        self.out_filters = [64, 128, 256, 512]
 
-        if backbone_type == 'vgg':
-            self.in_filters = [192, 384, 768, 1024]
-        elif backbone_type == "resnet50":
-            self.in_filters = [192, 512, 1024, 3072]
-
-        # upsampling
-        if head_up == 'unetUp':
-            # 64,64,512
-            self.up_concat4 = unetUp(self.in_filters[3], self.out_filters[3])
-            # 128,128,256
-            self.up_concat3 = unetUp(self.in_filters[2], self.out_filters[2])
-            # 256,256,128
-            self.up_concat2 = unetUp(self.in_filters[1], self.out_filters[1])
-            # 512,512,64
-            self.up_concat1 = unetUp(self.in_filters[0], self.out_filters[0])
-        elif head_up == 'JUp':
-            self.up_concat4 = JUp(1536, self.out_filters[3], up_channels=2048)
-            # 128,128,256
-            self.up_concat3 = JUp(640, self.out_filters[2], up_channels=512)
-            # 256,256,128
-            self.up_concat2 = JUp(320, self.out_filters[1], up_channels=256)
-            # 512,512,64
-            self.up_concat1 = JUp(96, self.out_filters[0], up_channels=128)
-        elif head_up == 'JUp_Add':
-            self.up_concat4 = JUp_Add(1536, self.out_filters[3], up_channels=2048)
-            # 128,128,256
-            self.up_concat3 = JUp_Add(640, self.out_filters[2], up_channels=512)
-            # 256,256,128
-            self.up_concat2 = JUp_Add(320, self.out_filters[1], up_channels=256)
-            # 512,512,64
-            self.up_concat1 = JUp_Add(96, self.out_filters[0], up_channels=128)
-        elif head_up == "JUp_Concat":
-            self.up_concat4 = JUp_Concat(1536, self.out_filters[3], up_channels=2048, repair_channel=1024)
-            # 128,128,256
-            self.up_concat3 = JUp_Concat(640, self.out_filters[2], up_channels=512, repair_channel=512)
-            # 256,256,128
-            self.up_concat2 = JUp_Concat(320, self.out_filters[1], up_channels=256, repair_channel=256)
-            # 512,512,64
-            self.up_concat1 = JUp_Concat(96, self.out_filters[0], up_channels=128, repair_channel=128)
+        if self.num_classes == 1:
+            self.final = nn.Sigmoid()
         else:
-            raise ValueError("{}为不支持的特征融合的方式！可选: ['unetUp', 'JUp', 'JUp_Add', 'JUp_Concat']".format(head_up))
+            self.final = None
 
-        if self.backbone_type == 'resnet50':
-            self.up_conv = nn.Sequential(
-                nn.UpsamplingBilinear2d(scale_factor=2),
-                nn.Conv2d(self.out_filters[0], self.out_filters[0], kernel_size=3, padding=1),
-                nn.ReLU(),
-                nn.Conv2d(self.out_filters[0], self.out_filters[0], kernel_size=3, padding=1),
-                nn.ReLU(),
-            )
-        else:
-            self.up_conv = None
+        channel = 64
+        # 64 128 256 512 1024
+        filters = [channel, channel * 2, channel * 4, channel * 8, channel * 16]
 
-        self.final = nn.Conv2d(self.out_filters[0], self.num_classes, 1)
+        self.Up4, self.Up3, self.Up2, self.Up1 = get_head(head_up, filters)
+
+        if self.backbone_type == "resnet50":
+            self.adjustment_block = AdjustmentBlock(64, 64)
+            self.adjustment_block1 = AdjustmentBlock(256, 128)
+            self.adjustment_block2 = AdjustmentBlock(512, 256)
+            self.adjustment_block3 = AdjustmentBlock(1024, 512)
+            self.adjustment_block4 = AdjustmentBlock(2048, 1024)
+
+        self.pred = nn.Sequential(
+            nn.Conv2d(filters[0], filters[0] // 2, kernel_size=1),
+            nn.BatchNorm2d(filters[0] // 2),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(filters[0] // 2, num_classes, kernel_size=1),
+        )
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            if isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, inputs):
-        [feat1, feat2, feat3, feat4, feat5] = inputs    # 64 256 512 1024 2048
-        up4 = self.up_concat4(feat4, feat5)     # (1,512,32,32)
-        up3 = self.up_concat3(feat3, up4)   # (1,256,64,64)
-        up2 = self.up_concat2(feat2, up3)   # (1,128,128,128)
-        up1 = self.up_concat1(feat1, up2)   # (1,64,256,256)
-        # (1,64,256,256)
-        if self.up_conv is not None:
-            up1 = self.up_conv(up1)
+        [e1, e2, e3, e4, e5] = inputs  # 64 256 512 1024 2048
+        if self.backbone_type == "resnet50":
+            e1 = self.adjustment_block(e1)
+            e2 = self.adjustment_block1(e2)
+            e3 = self.adjustment_block2(e3)
+            e4 = self.adjustment_block3(e4)
+            e5 = self.adjustment_block4(e5)
+        # decoder
+        d4 = self.Up4(e5, e4)  # (1,512,32,32)
+        d3 = self.Up3(d4, e3)  # (1,256,64,64)
+        d2 = self.Up2(d3, e2)  # (1,128,128,128)
+        d1 = self.Up1(d2, e1)  # (1,64,256,256)
+        pred = self.pred(d1)
 
-        output_head = self.final(up1)
+        if self.final is not None:
+            pred = self.final(pred)
 
-        return output_head
+        return pred
 
 
 if __name__ == "__main__":
-    print("dev head")
+    print("head.py")
 
-    backbone = resnet50(pretrained=False)
-    model = Head(backbone_type='resnet50', num_classes=7)
+    # backbone = resnet50(pretrained=False)
+    # model = Head(backbone_type='resnet50', num_classes=9, head_up="JUp_Concat")
+    backbone = UnetEncoder()
+    model = Head(backbone_type='base', num_classes=9, head_up="JUp_Concat")
+    # ['UnetUp', 'JUp', 'JUp_Concat']
     # print(model)
 
-    input_data = torch.randn((1, 3, 512, 512))
+    input_data = torch.randn((1, 3, 256, 256))
     output_backbone = backbone(input_data)
     output_data = model(output_backbone)
 

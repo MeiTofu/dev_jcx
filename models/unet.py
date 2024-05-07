@@ -10,21 +10,23 @@ from torch import nn
 
 from models.head import Head
 from models.resnet import resnet50
-from models.vgg import VGG16
+from models.unet_base import UnetEncoder
 
 
 class Unet(nn.Module):
-    def __init__(self, backbone_type="resnet50", num_classes=7, pretrained=True, head_up="unetUp"):
+    def __init__(self, backbone_type="resnet50", num_channel=3, num_classes=9, pretrained=True, head_up="UnetUp"):
         super(Unet, self).__init__()
         self.backbone_type = backbone_type
         self.num_classes = num_classes
 
-        if backbone_type == 'vgg':
-            self.backbone = VGG16(pretrained=pretrained)
-        elif backbone_type == "resnet50":
-            self.backbone = resnet50(pretrained=pretrained)
-
+        if backbone_type == "resnet50":
+            self.backbone = resnet50(num_channel=num_channel, pretrained=pretrained)
+        elif backbone_type == "base":
+            self.backbone = UnetEncoder(num_channel=num_channel)
+        else:
+            raise ValueError('Unsupported backbone type with `{}`, use base or resnet50.'.format(backbone_type))
         self.head = Head(backbone_type=backbone_type, num_classes=num_classes, head_up=head_up)
+
         if not pretrained:
             self._initialize_weights()
 
@@ -48,20 +50,21 @@ class Unet(nn.Module):
         for param in self.backbone.parameters():
             param.requires_grad = not freeze
 
-    # def unfreeze_backbone(self):
-    #     for param in self.backbone.parameters():
-    #         param.requires_grad = True
 
 
 if __name__ == "__main__":
-    print("dev unet")
+    print("unet.py")
 
-    model = Unet(backbone_type="resnet50", num_classes=7, pretrained=True)
+    model = Unet(backbone_type="base", num_channel=3, num_classes=9, pretrained=False, head_up="JUp_Concat")
+    # model = Unet(backbone_type="resnet50", num_channel=3, num_classes=9, pretrained=False)
     print(model)
 
     model.freeze_backbone(True)
-    input_data = torch.randn((1, 3, 512, 512))
+    input_data = torch.randn((1, 3, 256, 256))
     output_data = model(input_data)
     model.freeze_backbone(False)
 
     print(output_data.shape)
+    print(f'The parameters size of model is '
+          f'{sum(p.numel() for p in model.parameters() if p.requires_grad) / 1000000.0} MB')
+

@@ -55,6 +55,7 @@ class BasicBlock(nn.Module):
 
 class Bottleneck(nn.Module):
     expansion = 4
+
     def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
                  base_width=64, dilation=1, norm_layer=None):
         super(Bottleneck, self).__init__()
@@ -64,7 +65,6 @@ class Bottleneck(nn.Module):
         # 利用1x1卷积下降通道数
         self.conv1 = conv1x1(inplanes, width)
         self.bn1 = norm_layer(width)
-        # 利用3x3卷积进行特征提取
         self.conv2 = conv3x3(width, width, stride, groups, dilation)
         self.bn2 = norm_layer(width)
         # 利用1x1卷积上升通道数
@@ -99,21 +99,17 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, layers, num_classes=1000):
-        #-----------------------------------------------------------#
-        #   假设输入图像为600,600,3
-        #   当我们使用resnet50的时候
-        #-----------------------------------------------------------#
-        self.inplanes = 64
+    def __init__(self, block, layers, num_channel=3, num_classes=1000):
         super(ResNet, self).__init__()
+        self.inplanes = 64
+
         # 600,600,3 -> 300,300,64
-        self.conv1  = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.bn1    = nn.BatchNorm2d(64)
-        self.relu   = nn.ReLU(inplace=True)
+        self.conv1 = nn.Conv2d(num_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(inplace=True)
         # 300,300,64 -> 150,150,64
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        # TODO：nn.MaxPool2d 中的 ceil_model=True 被注释，替换为 padding=1
-        # self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=0, ceil_mode=True)
+
         # 150,150,64 -> 150,150,256
         self.layer1 = self._make_layer(block, 64, layers[0])
         # 150,150,256 -> 75,75,512
@@ -122,9 +118,8 @@ class ResNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         # 38,38,1024 -> 19,19,2048
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
-        
-        self.avgpool = nn.AvgPool2d(7)
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        # self.avgpool = nn.AvgPool2d(7)
+        # self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -138,13 +133,15 @@ class ResNet(nn.Module):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                    kernel_size=1, stride=stride, bias=False),
-            nn.BatchNorm2d(planes * block.expansion),
-        )
+                nn.Conv2d(self.inplanes,
+                          planes * block.expansion,
+                          kernel_size=1,
+                          stride=stride,
+                          bias=False),
+                nn.BatchNorm2d(planes * block.expansion),
+            )
 
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
+        layers = [block(self.inplanes, planes, stride, downsample)]
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
             layers.append(block(self.inplanes, planes))
@@ -152,38 +149,41 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        # x = self.conv1(x)
-        # x = self.bn1(x)
-        # x = self.relu(x)
-        # x = self.maxpool(x)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        feat1 = self.relu(x)
 
-        # x = self.layer1(x)
-        # x = self.layer2(x)
-        # x = self.layer3(x)
-        # x = self.layer4(x)
+        x = self.maxpool(feat1)
+        feat2 = self.layer1(x)
 
-        # x = self.avgpool(x)
-        # x = x.view(x.size(0), -1)
-        # x = self.fc(x)
-
-        x       = self.conv1(x)
-        x       = self.bn1(x)
-        feat1   = self.relu(x)
-
-        x       = self.maxpool(feat1)
-        feat2   = self.layer1(x)
-
-        feat3   = self.layer2(feat2)
-        feat4   = self.layer3(feat3)
-        feat5   = self.layer4(feat4)
+        feat3 = self.layer2(feat2)
+        feat4 = self.layer3(feat3)
+        feat5 = self.layer4(feat4)
         return [feat1, feat2, feat3, feat4, feat5]
 
 
-def resnet50(pretrained=False, **kwargs):
-    model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
+def resnet18(num_channel=3, pretrained=False, **kwargs):
+    model = ResNet(BasicBlock, [2, 2, 2, 2], num_channel, **kwargs)
+    if pretrained:
+        model.load_state_dict(model_zoo.load_url('https://s3.amazonaws.com/pytorch/models/resnet50-19c8e357.pth', model_dir='weight'), strict=False)
+    return model
+
+
+def resnet50(num_channel=3, pretrained=False, **kwargs):
+    model = ResNet(Bottleneck, [3, 4, 6, 3], num_channel, **kwargs)
     if pretrained:
         # model.load_state_dict(model_zoo.load_url('https://s3.amazonaws.com/pytorch/models/resnet50-19c8e357.pth', model_dir='weight'), strict=False)
         model.load_state_dict(torch.load('weight/resnet50-19c8e357.pth'), strict=False)
-    del model.avgpool
-    del model.fc
     return model
+
+if __name__ == "__main__":
+    model = resnet50(pretrained=False)
+    input_data = torch.randn((1, 3, 256, 256))
+    output_data = model(input_data)
+    for data in output_data:
+        print(data.shape)
+
+    print(f'The parameters size of model is '
+          f'{sum(p.numel() for p in model.parameters() if p.requires_grad) / 1000000.0} MB')
+
+
